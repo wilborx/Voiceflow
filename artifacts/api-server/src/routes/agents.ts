@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, agentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { createVapiAssistant, deleteVapiAssistant } from "../lib/vapi.js";
+import { createVapiAssistant, deleteVapiAssistant, updateVapiAssistant } from "../lib/vapi.js";
 import { purchaseGermanPhoneNumber } from "../lib/telnyx.js";
 import {
   CreateAgentBody,
@@ -202,9 +202,44 @@ router.patch("/:id", async (req, res) => {
       .where(eq(agentsTable.id, paramsParsed.data.id))
       .returning();
     if (!agent) return res.status(404).json({ error: "Not found" });
+
+    if (agent.vapiAssistantId && process.env.VAPI_API_KEY) {
+      try {
+        await updateVapiAssistant(agent.vapiAssistantId, {
+          name: body.name,
+          voiceId: body.voiceId,
+          language: body.language,
+          systemPrompt: body.systemPrompt,
+        });
+      } catch (err) {
+        console.error("Vapi update failed (non-fatal):", err);
+      }
+    }
+
     res.json(mapAgent(agent));
   } catch {
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/agents/:id/sync-vapi — force-patch Vapi assistant with openai voice
+router.post("/:id/sync-vapi", async (req, res) => {
+  const parsed = GetAgentParams.safeParse(req.params);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
+
+  try {
+    const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, parsed.data.id));
+    if (!agent) return res.status(404).json({ error: "Not found" });
+    if (!agent.vapiAssistantId) return res.status(400).json({ error: "No Vapi assistant linked" });
+
+    await updateVapiAssistant(agent.vapiAssistantId, {
+      voiceId: agent.voiceId ?? "nova",
+      language: agent.language ?? "de",
+    });
+
+    res.json({ ok: true, vapiAssistantId: agent.vapiAssistantId });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "Internal server error" });
   }
 });
 

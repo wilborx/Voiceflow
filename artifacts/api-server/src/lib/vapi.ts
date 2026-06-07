@@ -122,6 +122,51 @@ export async function createVapiAssistant(params: CreateAssistantParams) {
   return assistant;
 }
 
+export async function updateVapiAssistant(assistantId: string, params: Partial<CreateAssistantParams>) {
+  const apiKey = process.env.VAPI_API_KEY;
+  if (!apiKey) throw new Error("Vapi not configured — VAPI_API_KEY missing");
+
+  const patch: Record<string, unknown> = {};
+
+  if (params.name) patch.name = params.name;
+
+  patch.voice = {
+    provider: "openai",
+    voiceId: params.voiceId ?? "nova",
+  };
+
+  if (params.language) {
+    patch.transcriber = {
+      provider: "deepgram",
+      model: "nova-3",
+      language: params.language,
+    };
+  }
+
+  if (params.systemPrompt) {
+    patch.model = {
+      provider: "anthropic",
+      model: "claude-sonnet-4-20250514",
+      systemPrompt: params.systemPrompt,
+      temperature: 0.7,
+    };
+  }
+
+  const res = await fetch(`https://api.vapi.ai/assistant/${assistantId}`, {
+    method: "PATCH",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(patch),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Vapi PATCH failed (${res.status}): ${body}`);
+  }
+}
+
 export async function deleteVapiAssistant(assistantId: string) {
   if (!vapi) return;
   try {
