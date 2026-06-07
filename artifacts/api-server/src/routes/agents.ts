@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { db, agentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { createVapiAssistant, deleteVapiAssistant } from "../lib/vapi.js";
+import { purchaseGermanPhoneNumber } from "../lib/telnyx.js";
 import {
   CreateAgentBody,
   UpdateAgentBody,
@@ -117,6 +119,40 @@ router.post("/", async (req, res) => {
       voiceName: body.voiceName ?? null,
     }).returning();
 
+    if (process.env.VAPI_API_KEY) {
+      try {
+        const vapiAssistant = await createVapiAssistant({
+          name: body.name,
+          type: body.type as "booking" | "advisory" | "hr_screening" | "hr_onboarding",
+          systemPrompt,
+          voiceId: body.voiceId,
+          language: body.language ?? "de",
+          businessName: body.businessName,
+        });
+
+        console.log("Vapi assistant created:", vapiAssistant.id);
+
+        let phoneNumber: string | null = null;
+        if (process.env.TELNYX_API_KEY) {
+          phoneNumber = await purchaseGermanPhoneNumber();
+        }
+
+        const [updatedAgent] = await db
+          .update(agentsTable)
+          .set({
+            vapiAssistantId: vapiAssistant.id,
+            phoneNumber: phoneNumber ?? null,
+            updatedAt: new Date(),
+          })
+          .where(eq(agentsTable.id, agent.id))
+          .returning();
+
+        return res.status(201).json(mapAgent(updatedAgent));
+      } catch (vapiErr) {
+        console.error("Vapi assistant creation failed, agent saved without Vapi ID:", vapiErr);
+      }
+    }
+
     res.status(201).json(mapAgent(agent));
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
@@ -178,6 +214,12 @@ router.delete("/:id", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
 
   try {
+    const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, parsed.data.id));
+
+    if (agent?.vapiAssistantId) {
+      await deleteVapiAssistant(agent.vapiAssistantId);
+    }
+
     await db.delete(agentsTable).where(eq(agentsTable.id, parsed.data.id));
     res.status(204).send();
   } catch {

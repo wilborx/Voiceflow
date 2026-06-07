@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, timestamp, integer, numeric, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -20,6 +20,9 @@ export const agentsTable = pgTable("agents", {
   totalCalls: integer("total_calls").notNull().default(0),
   totalMinutes: numeric("total_minutes").notNull().default("0"),
   resolutionRate: numeric("resolution_rate").notNull().default("0"),
+  googleCalendarAccessToken: text("google_calendar_access_token"),
+  googleCalendarRefreshToken: text("google_calendar_refresh_token"),
+  googleCalendarConnected: boolean("google_calendar_connected").default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

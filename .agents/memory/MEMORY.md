@@ -1,0 +1,2 @@
+- [VoiceFlow AI build quirks](voiceflow-build-quirks.md) — esbuild externals + ws runtime dep required for Telnyx SDK
+- [VoiceFlow AI DB rebuild](voiceflow-db-rebuild.md) — db lib must be tsc-compiled after schema changes for api-server project references to resolve

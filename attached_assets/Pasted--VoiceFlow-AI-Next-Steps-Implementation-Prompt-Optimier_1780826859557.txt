@@ -1,0 +1,1161 @@
+# VoiceFlow AI — Next Steps Implementation Prompt
+### Optimiert für Replit Agent | Phase 1–3
+
+---
+
+## KONTEXT
+
+Du arbeitest an **VoiceFlow AI**, einer bestehenden Full-Stack B2B SaaS-Plattform für KI-Telefonagenten im DACH-Markt. Das Projekt ist ein **pnpm-Workspace Monorepo** mit folgender Struktur:
+
+```
+VoiceFlow-AI/
+├── artifacts/
+│   ├── api-server/          ← Express + Fastify Backend (TypeScript, ESM)
+│   │   └── src/
+│   │       ├── app.ts
+│   │       ├── routes/
+│   │       │   ├── agents.ts       ← Agents CRUD (VOLLSTÄNDIG)
+│   │       │   ├── calls.ts        ← Call History (VOLLSTÄNDIG)
+│   │       │   ├── billing.ts      ← Billing (NUR STUB — MUSS ERSETZT WERDEN)
+│   │       │   ├── webhooks.ts     ← Vapi Webhook (TEILWEISE — MUSS ERWEITERT WERDEN)
+│   │       │   ├── dashboard.ts
+│   │       │   └── index.ts
+│   │       └── lib/logger.ts
+│   └── voiceflow/           ← React Frontend (Vite + shadcn/ui)
+│       └── src/
+│           ├── pages/
+│           │   ├── agents.tsx          ← Agent-Liste (VOLLSTÄNDIG)
+│           │   ├── agent-new.tsx       ← Agent-Wizard (VOLLSTÄNDIG, 4 Schritte)
+│           │   ├── agent-detail.tsx    ← Agent-Detail
+│           │   ├── billing.tsx         ← Billing Page (VOLLSTÄNDIG)
+│           │   ├── integrations.tsx    ← Integrations (NUR UI — MUSS VERBUNDEN WERDEN)
+│           │   ├── calls.tsx
+│           │   ├── analytics.tsx
+│           │   └── dashboard.tsx
+│           └── components/layout/
+├── lib/
+│   ├── db/src/schema/
+│   │   ├── agents.ts           ← DB-Schema für agents-Tabelle (UUID PK, vapiAssistantId, phoneNumber etc.)
+│   │   ├── calls.ts            ← DB-Schema für calls-Tabelle
+│   │   └── organizations.ts    ← DB-Schema für organizations-Tabelle (stripeCustomerId, subscriptionStatus etc.)
+│   ├── api-spec/openapi.yaml   ← OpenAPI Spec (Quelle der Wahrheit für alle API-Typen)
+│   └── api-client-react/       ← Auto-generierter React Query Client (NICHT manuell ändern)
+└── pnpm-workspace.yaml
+```
+
+### Was bereits funktioniert (NICHT ANFASSEN):
+- Komplettes React-Dashboard mit 8 Seiten
+- Express-Backend mit CRUD für Agents und Calls (Drizzle ORM + PostgreSQL)
+- Drizzle DB-Schema für agents, calls, organizations
+- 4-Schritt Agent-Erstellungs-Wizard im Frontend
+- Billing UI mit 3 Plan-Tiers
+- pnpm-Workspace, TypeScript, Zod-Validierung, API-Client generiert aus OpenAPI
+
+### Was FEHLT und implementiert werden muss:
+1. **Vapi Integration** — Kein echter Assistent wird erstellt wenn Agent gespeichert wird
+2. **Telnyx Integration** — Keine Telefonnummer wird gekauft/zugewiesen
+3. **Vapi Webhook Handler** — call-started/call-ended existiert aber führt keine echten Aktionen aus
+4. **Google Calendar Integration** — Kein echter Slot-Check, keine Buchung
+5. **SMS Bestätigung** — Keine SMS nach Buchung
+6. **Stripe Checkout** — Gibt nur Demo-URL zurück, kein echtes Payment
+7. **Auth (Clerk)** — Kein Login, alle API-Routen sind öffentlich
+
+---
+
+## PHASE 1: ERSTER ECHTER ANRUF (HÖCHSTE PRIORITÄT)
+
+### Schritt 1: Vapi SDK im Backend installieren und einbinden
+
+**Installiere in `artifacts/api-server/`:**
+```bash
+cd artifacts/api-server && pnpm add @vapi-ai/server-sdk
+```
+
+**Erstelle neue Datei `artifacts/api-server/src/lib/vapi.ts`:**
+
+```typescript
+import Vapi from "@vapi-ai/server-sdk";
+
+if (!process.env.VAPI_API_KEY) {
+  throw new Error("VAPI_API_KEY environment variable is required");
+}
+
+export const vapi = new Vapi({ token: process.env.VAPI_API_KEY });
+
+export interface CreateAssistantParams {
+  name: string;
+  type: "booking" | "advisory" | "hr_screening" | "hr_onboarding";
+  systemPrompt: string;
+  voiceId?: string | null;
+  language?: string;
+  businessName?: string | null;
+}
+
+const FIRST_MESSAGES: Record<string, string> = {
+  booking: "Herzlich willkommen! Wie kann ich Ihnen heute helfen?",
+  advisory: "Guten Tag, ich bin Ihre KI-Beratungsassistentin. Wie darf ich Ihnen behilflich sein?",
+  hr_screening: "Hallo! Ich führe heute Ihr erstes Gespräch im Rahmen Ihrer Bewerbung. Haben Sie einen Moment Zeit?",
+  hr_onboarding: "Willkommen im Team! Ich beantworte gerne Ihre Fragen zum Start. Was möchten Sie wissen?",
+};
+
+const BOOKING_TOOLS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "checkAvailability",
+      description: "Prüft verfügbare Termine im Kalender des Unternehmens",
+      parameters: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: "Datum im Format YYYY-MM-DD" },
+          service: { type: "string", description: "Gewünschte Behandlung oder Dienstleistung" },
+        },
+        required: ["date"],
+      },
+    },
+    server: { url: `${process.env.API_BASE_URL}/api/tools/calendar/availability` },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "bookAppointment",
+      description: "Erstellt einen neuen Termin nach Bestätigung durch den Kunden",
+      parameters: {
+        type: "object",
+        properties: {
+          customerName: { type: "string", description: "Vollständiger Name des Kunden" },
+          customerPhone: { type: "string", description: "Telefonnummer des Kunden" },
+          service: { type: "string", description: "Gebuchte Behandlung" },
+          datetime: { type: "string", description: "Termin als ISO 8601 Datetime" },
+        },
+        required: ["customerName", "customerPhone", "service", "datetime"],
+      },
+    },
+    server: { url: `${process.env.API_BASE_URL}/api/tools/calendar/book` },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "transferToHuman",
+      description: "Verbindet den Anrufer mit einem menschlichen Mitarbeiter bei Beschwerden oder sehr komplexen Anfragen",
+      parameters: {
+        type: "object",
+        properties: {
+          reason: { type: "string", description: "Grund für die Weiterleitung" },
+        },
+        required: ["reason"],
+      },
+    },
+    server: { url: `${process.env.API_BASE_URL}/api/tools/transfer` },
+  },
+];
+
+export async function createVapiAssistant(params: CreateAssistantParams) {
+  const tools = params.type === "booking" ? BOOKING_TOOLS : [
+    {
+      type: "function" as const,
+      function: {
+        name: "transferToHuman",
+        description: "Verbindet mit einem Mitarbeiter",
+        parameters: {
+          type: "object",
+          properties: { reason: { type: "string" } },
+          required: ["reason"],
+        },
+      },
+      server: { url: `${process.env.API_BASE_URL}/api/tools/transfer` },
+    },
+  ];
+
+  const assistant = await vapi.assistants.create({
+    name: params.name,
+    model: {
+      provider: "anthropic",
+      model: "claude-sonnet-4-20250514",
+      systemPrompt: params.systemPrompt,
+      temperature: 0.7,
+      tools,
+    },
+    voice: {
+      provider: "11labs",
+      voiceId: params.voiceId ?? "21m00Tcm4TlvDq8ikWAM", // Lena (default)
+    },
+    transcriber: {
+      provider: "deepgram",
+      model: "nova-3",
+      language: params.language ?? "de",
+    },
+    firstMessage: FIRST_MESSAGES[params.type] ?? FIRST_MESSAGES.booking,
+    endCallMessage: "Vielen Dank für Ihren Anruf. Auf Wiederhören!",
+    endCallPhrases: ["auf wiederhören", "tschüss", "danke tschüss"],
+    silenceTimeoutSeconds: 30,
+    maxDurationSeconds: 600,
+    serverUrl: `${process.env.API_BASE_URL}/api/webhooks/vapi`,
+    serverUrlSecret: process.env.VAPI_WEBHOOK_SECRET,
+  });
+
+  return assistant;
+}
+
+export async function deleteVapiAssistant(assistantId: string) {
+  try {
+    await vapi.assistants.delete(assistantId);
+  } catch (err) {
+    console.error("Failed to delete Vapi assistant:", assistantId, err);
+  }
+}
+```
+
+### Schritt 2: agents.ts Route erweitern — Vapi-Assistent bei Agent-Erstellung erstellen
+
+**Öffne `artifacts/api-server/src/routes/agents.ts`**
+
+Füge am Anfang der Datei nach den bestehenden Imports hinzu:
+```typescript
+import { createVapiAssistant, deleteVapiAssistant } from "../lib/vapi.js";
+```
+
+Ersetze den `POST /` Handler (der Block `router.post("/", async (req, res) => {...})`) vollständig mit:
+
+```typescript
+router.post("/", async (req, res) => {
+  const parsed = CreateAgentBody.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.message });
+  }
+
+  const body = parsed.data;
+  const systemPrompt = body.systemPrompt || SYSTEM_PROMPT_TEMPLATES[body.type] || "";
+
+  try {
+    // 1. Zuerst in DB speichern (draft status)
+    const [agent] = await db.insert(agentsTable).values({
+      name: body.name,
+      type: body.type as "booking" | "advisory" | "hr_screening" | "hr_onboarding",
+      systemPrompt,
+      language: body.language ?? "de",
+      timezone: body.timezone ?? "Europe/Berlin",
+      businessName: body.businessName ?? null,
+      businessHoursOpen: body.businessHoursOpen ?? null,
+      businessHoursClose: body.businessHoursClose ?? null,
+      voiceId: body.voiceId ?? null,
+      voiceName: body.voiceName ?? null,
+    }).returning();
+
+    // 2. Vapi Assistent erstellen (nur wenn API Key vorhanden)
+    if (process.env.VAPI_API_KEY) {
+      try {
+        const vapiAssistant = await createVapiAssistant({
+          name: body.name,
+          type: body.type as "booking" | "advisory" | "hr_screening" | "hr_onboarding",
+          systemPrompt,
+          voiceId: body.voiceId,
+          language: body.language ?? "de",
+          businessName: body.businessName,
+        });
+
+        // vapiAssistantId zurück in DB schreiben
+        const [updatedAgent] = await db
+          .update(agentsTable)
+          .set({ vapiAssistantId: vapiAssistant.id, updatedAt: new Date() })
+          .where(eq(agentsTable.id, agent.id))
+          .returning();
+
+        return res.status(201).json(mapAgent(updatedAgent));
+      } catch (vapiErr) {
+        console.error("Vapi assistant creation failed, agent saved without Vapi ID:", vapiErr);
+        // Agent trotzdem zurückgeben — Vapi kann später versucht werden
+      }
+    }
+
+    res.status(201).json(mapAgent(agent));
+  } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+```
+
+Ersetze den `DELETE /:id` Handler vollständig mit:
+
+```typescript
+router.delete("/:id", async (req, res) => {
+  const parsed = DeleteAgentParams.safeParse(req.params);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
+
+  try {
+    const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, parsed.data.id));
+
+    // Vapi Assistent mitlöschen falls vorhanden
+    if (agent?.vapiAssistantId) {
+      await deleteVapiAssistant(agent.vapiAssistantId);
+    }
+
+    await db.delete(agentsTable).where(eq(agentsTable.id, parsed.data.id));
+    res.status(204).send();
+  } catch {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+```
+
+### Schritt 3: Telnyx SDK installieren und Telefonnummer-Verwaltung hinzufügen
+
+**Installiere in `artifacts/api-server/`:**
+```bash
+cd artifacts/api-server && pnpm add telnyx
+```
+
+**Erstelle neue Datei `artifacts/api-server/src/lib/telnyx.ts`:**
+
+```typescript
+import Telnyx from "telnyx";
+
+const telnyx = process.env.TELNYX_API_KEY
+  ? new Telnyx(process.env.TELNYX_API_KEY)
+  : null;
+
+export async function purchaseGermanPhoneNumber(): Promise<string | null> {
+  if (!telnyx || !process.env.TELNYX_CONNECTION_ID) {
+    console.warn("Telnyx not configured — skipping phone number purchase");
+    return null;
+  }
+
+  try {
+    // Verfügbare DE-Nummern suchen
+    const { data: available } = await (telnyx.availablePhoneNumbers as any).list({
+      filter: {
+        country_code: "DE",
+        features: ["voice"],
+        limit: 3,
+      },
+    });
+
+    if (!available?.length) {
+      console.error("No German phone numbers available");
+      return null;
+    }
+
+    // Erste verfügbare Nummer kaufen
+    const { data: order } = await (telnyx.numberOrders as any).create({
+      phone_numbers: [{ phone_number: available[0].phone_number }],
+      connection_id: process.env.TELNYX_CONNECTION_ID,
+    });
+
+    return order?.phone_numbers?.[0]?.phone_number ?? null;
+  } catch (err) {
+    console.error("Failed to purchase Telnyx number:", err);
+    return null;
+  }
+}
+
+export async function sendSMS(to: string, message: string): Promise<boolean> {
+  if (!telnyx || !process.env.TELNYX_SENDER_NUMBER) {
+    console.warn("Telnyx not configured — SMS not sent");
+    return false;
+  }
+
+  try {
+    await (telnyx.messages as any).create({
+      from: process.env.TELNYX_SENDER_NUMBER,
+      to,
+      text: message,
+    });
+    return true;
+  } catch (err) {
+    console.error("SMS send failed:", err);
+    return false;
+  }
+}
+```
+
+### Schritt 4: Vapi Webhook Handler erweitern
+
+**Ersetze `artifacts/api-server/src/routes/webhooks.ts` vollständig:**
+
+```typescript
+import { Router, type Request, type Response } from "express";
+import { db, callsTable, agentsTable, organizationsTable } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
+import { sendSMS } from "../lib/telnyx.js";
+
+const router = Router();
+
+// POST /api/webhooks/vapi
+router.post("/vapi", async (req: Request, res: Response) => {
+  const secret = req.headers["x-vapi-secret"];
+  if (process.env.VAPI_WEBHOOK_SECRET && secret !== process.env.VAPI_WEBHOOK_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const event = req.body;
+  const messageType = event?.message?.type;
+
+  try {
+    switch (messageType) {
+      case "call-started": {
+        const { call } = event.message;
+
+        const agentResult = await db
+          .select({ id: agentsTable.id, orgId: agentsTable.id })
+          .from(agentsTable)
+          .where(eq(agentsTable.vapiAssistantId, call.assistantId))
+          .limit(1);
+
+        await db.insert(callsTable).values({
+          vapiCallId: call.id,
+          agentId: agentResult[0]?.id ?? null,
+          callerNumber: call.customer?.number ?? null,
+          direction: "inbound",
+          status: "in_progress",
+          startedAt: new Date(),
+        }).onConflictDoNothing();
+
+        // Agent-Zähler inkrementieren
+        if (agentResult[0]?.id) {
+          await db
+            .update(agentsTable)
+            .set({ totalCalls: sql`${agentsTable.totalCalls} + 1` })
+            .where(eq(agentsTable.id, agentResult[0].id));
+        }
+        break;
+      }
+
+      case "call-ended": {
+        const { call } = event.message;
+        const duration = call.endedAt && call.startedAt
+          ? Math.round((new Date(call.endedAt).getTime() - new Date(call.startedAt).getTime()) / 1000)
+          : 0;
+
+        const minutesUsed = Math.max(1, Math.ceil(duration / 60));
+
+        await db
+          .update(callsTable)
+          .set({
+            status: "completed",
+            durationSeconds: duration,
+            endedAt: call.endedAt ? new Date(call.endedAt) : null,
+            transcript: call.transcript ?? null,
+            summary: call.summary ?? null,
+            resolved: true,
+            resolutionType: "completed",
+          })
+          .where(eq(callsTable.vapiCallId, call.id));
+
+        // Minuten zur Organisation addieren
+        const callRecord = await db
+          .select({ agentId: callsTable.agentId })
+          .from(callsTable)
+          .where(eq(callsTable.vapiCallId, call.id))
+          .limit(1);
+
+        if (callRecord[0]?.agentId) {
+          await db
+            .update(agentsTable)
+            .set({
+              totalMinutes: sql`${agentsTable.totalMinutes} + ${minutesUsed}`,
+            })
+            .where(eq(agentsTable.id, callRecord[0].agentId));
+        }
+        break;
+      }
+
+      case "function-call": {
+        // Tool Calls vom Vapi-Agent — werden über /api/tools/* Routen abgehandelt
+        // Vapi erwartet eine direkte Antwort im Response Body
+        const { functionCall } = event.message;
+        console.log("Tool call received:", functionCall?.name, functionCall?.parameters);
+        // Die eigentliche Tool-Logik ist in /api/tools/* implementiert
+        // Hier nur ACK zurückgeben
+        return res.json({ result: "Tool endpoint handles this separately" });
+      }
+
+      default:
+        // Unbekannte Event-Typen stillschweigend ignorieren
+        break;
+    }
+
+    res.json({ received: true });
+  } catch (err) {
+    console.error("Webhook error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+export default router;
+```
+
+### Schritt 5: Tool-Handler Route erstellen
+
+**Erstelle neue Datei `artifacts/api-server/src/routes/tools.ts`:**
+
+```typescript
+import { Router, type Request, type Response } from "express";
+import { db, callsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { sendSMS } from "../lib/telnyx.js";
+
+const router = Router();
+
+// POST /api/tools/calendar/availability
+// Wird von Vapi aufgerufen wenn Agent checkAvailability Tool nutzt
+router.post("/calendar/availability", async (req: Request, res: Response) => {
+  const { date, service, agentId } = req.body;
+
+  // TODO Phase 2: Google Calendar OAuth + echte Slots
+  // Aktuell: Placeholder-Slots zurückgeben damit Agent funktioniert
+  const slots = generatePlaceholderSlots(date);
+
+  res.json({
+    result: JSON.stringify({
+      available: slots.length > 0,
+      slots: slots.map((s) => ({
+        datetime: s,
+        label: formatGermanDateTime(s),
+      })),
+      message: slots.length > 0
+        ? `Ich habe ${slots.length} freie Termine gefunden.`
+        : "Leider sind für dieses Datum keine Termine verfügbar.",
+    }),
+  });
+});
+
+// POST /api/tools/calendar/book
+// Wird von Vapi aufgerufen wenn Agent bookAppointment Tool nutzt
+router.post("/calendar/book", async (req: Request, res: Response) => {
+  const { customerName, customerPhone, service, datetime } = req.body;
+
+  // TODO Phase 2: Echte Google Calendar Event-Erstellung
+  const confirmationNumber = Math.random().toString(36).slice(-6).toUpperCase();
+
+  // SMS-Bestätigung senden
+  if (customerPhone) {
+    const formattedDate = formatGermanDateTime(datetime);
+    const smsText = `✓ Ihr Termin für ${service} am ${formattedDate} wurde bestätigt. Bestätigungs-Nr.: ${confirmationNumber}`;
+    await sendSMS(customerPhone, smsText);
+  }
+
+  res.json({
+    result: JSON.stringify({
+      success: true,
+      confirmationNumber,
+      message: `Termin erfolgreich gebucht für ${formatGermanDateTime(datetime)}. Eine Bestätigung wurde an ${customerPhone} gesendet.`,
+    }),
+  });
+});
+
+// POST /api/tools/transfer
+router.post("/transfer", async (req: Request, res: Response) => {
+  const { reason } = req.body;
+  console.log("Transfer to human requested:", reason);
+  res.json({
+    result: "Ich verbinde Sie jetzt mit einem Mitarbeiter. Bitte bleiben Sie in der Leitung.",
+  });
+});
+
+// Hilfsfunktionen
+function generatePlaceholderSlots(date: string): string[] {
+  const slots: string[] = [];
+  const baseDate = new Date(date + "T00:00:00+02:00");
+
+  if (isNaN(baseDate.getTime())) return [];
+
+  const hours = [9, 10, 11, 14, 15, 16];
+  for (const hour of hours) {
+    const slot = new Date(baseDate);
+    slot.setHours(hour, 0, 0, 0);
+    if (slot > new Date()) {
+      slots.push(slot.toISOString());
+    }
+  }
+
+  return slots.slice(0, 3);
+}
+
+function formatGermanDateTime(isoString: string): string {
+  try {
+    return new Intl.DateTimeFormat("de-DE", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Berlin",
+    }).format(new Date(isoString));
+  } catch {
+    return isoString;
+  }
+}
+
+export default router;
+```
+
+**Füge in `artifacts/api-server/src/routes/index.ts` die neue Route hinzu:**
+
+```typescript
+import toolsRouter from "./tools.js";
+// ... bestehende imports bleiben
+
+router.use("/tools", toolsRouter);
+// ... bestehende routes bleiben
+```
+
+### Schritt 6: Environment Variables in Replit Secrets setzen
+
+Gehe in Replit zu **Tools → Secrets** und füge ALLE folgenden Secrets hinzu:
+
+```
+VAPI_API_KEY              = [Dein Vapi API Key von app.vapi.ai → Account → API Keys]
+VAPI_WEBHOOK_SECRET       = [Beliebiger langer String, z.B. voiceflow-webhook-secret-2026]
+ELEVENLABS_API_KEY        = [Von elevenlabs.io → Profile → API Keys]
+DEEPGRAM_API_KEY          = [Von console.deepgram.com → API Keys]
+TELNYX_API_KEY            = [Von portal.telnyx.com → API Keys → KEY... Format]
+TELNYX_CONNECTION_ID      = [Von portal.telnyx.com → Voice → SIP Connections → Connection ID]
+TELNYX_SENDER_NUMBER      = [Deine Telnyx DE-Nummer im Format +49...]
+API_BASE_URL              = [Deine Replit App URL, z.B. https://voiceflow-ai.USERNAME.replit.app]
+```
+
+**Wichtig:** `API_BASE_URL` muss auf deine tatsächliche öffentliche Replit-URL zeigen, damit Vapi die Tool-Webhooks erreichen kann. Die URL findest du oben rechts in Replit wenn die App läuft.
+
+---
+
+## PHASE 2: ECHTE GOOGLE CALENDAR INTEGRATION
+
+### Schritt 7: Google OAuth2 Setup
+
+**Installiere:**
+```bash
+cd artifacts/api-server && pnpm add googleapis
+```
+
+**Erstelle `artifacts/api-server/src/lib/google-calendar.ts`:**
+
+```typescript
+import { google } from "googleapis";
+
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  `${process.env.API_BASE_URL}/api/integrations/google/callback`
+);
+
+export function getAuthUrl(agentId: string): string {
+  return oauth2Client.generateAuthUrl({
+    access_type: "offline",
+    scope: ["https://www.googleapis.com/auth/calendar"],
+    prompt: "consent",
+    state: agentId, // agentId mitgeben damit wir nach OAuth wissen welcher Agent
+  });
+}
+
+export async function exchangeCodeForTokens(code: string) {
+  const { tokens } = await oauth2Client.getToken(code);
+  return tokens;
+}
+
+export async function getAvailableSlots(
+  accessToken: string,
+  refreshToken: string,
+  date: string,
+  durationMinutes = 60
+): Promise<string[]> {
+  oauth2Client.setCredentials({ access_token: accessToken, refresh_token: refreshToken });
+  const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+
+  const startOfDay = new Date(`${date}T08:00:00+02:00`);
+  const endOfDay = new Date(`${date}T19:00:00+02:00`);
+
+  const { data } = await calendar.freebusy.query({
+    requestBody: {
+      timeMin: startOfDay.toISOString(),
+      timeMax: endOfDay.toISOString(),
+      items: [{ id: "primary" }],
+    },
+  });
+
+  const busyPeriods = data.calendars?.primary?.busy ?? [];
+  const slotMs = durationMinutes * 60000;
+  const slots: string[] = [];
+  let cursor = new Date(startOfDay);
+
+  while (cursor.getTime() + slotMs <= endOfDay.getTime()) {
+    const slotEnd = new Date(cursor.getTime() + slotMs);
+    const isConflict = busyPeriods.some((busy) => {
+      return cursor < new Date(busy.end!) && slotEnd > new Date(busy.start!);
+    });
+    if (!isConflict) slots.push(cursor.toISOString());
+    cursor = new Date(cursor.getTime() + slotMs);
+  }
+
+  return slots.slice(0, 3);
+}
+
+export async function createCalendarEvent(
+  accessToken: string,
+  refreshToken: string,
+  params: {
+    summary: string;
+    datetime: string;
+    durationMinutes: number;
+    customerName: string;
+    customerPhone: string;
+  }
+) {
+  oauth2Client.setCredentials({ access_token: accessToken, refresh_token: refreshToken });
+  const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+
+  const start = new Date(params.datetime);
+  const end = new Date(start.getTime() + params.durationMinutes * 60000);
+
+  const { data } = await calendar.events.insert({
+    calendarId: "primary",
+    requestBody: {
+      summary: `${params.summary} — ${params.customerName}`,
+      description: `📞 Gebucht via VoiceFlow AI\nKunde: ${params.customerName}\nTel: ${params.customerPhone}`,
+      start: { dateTime: start.toISOString(), timeZone: "Europe/Berlin" },
+      end: { dateTime: end.toISOString(), timeZone: "Europe/Berlin" },
+      status: "confirmed",
+    },
+  });
+
+  return data;
+}
+```
+
+### Schritt 8: Google OAuth Route + Agents-Schema für Tokens erweitern
+
+**Füge zur DB-Schema `lib/db/src/schema/agents.ts` hinzu** (nach den bestehenden Feldern):
+
+```typescript
+// Google Calendar OAuth Tokens (verschlüsselt in Produktion)
+googleCalendarAccessToken: text("google_calendar_access_token"),
+googleCalendarRefreshToken: text("google_calendar_refresh_token"),
+googleCalendarConnected: integer("google_calendar_connected", { mode: "boolean" }).default(false),
+```
+
+**Führe nach der Schema-Änderung aus:**
+```bash
+cd lib/db && pnpm run push
+```
+
+**Erstelle `artifacts/api-server/src/routes/integrations.ts`:**
+
+```typescript
+import { Router } from "express";
+import { db, agentsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { getAuthUrl, exchangeCodeForTokens } from "../lib/google-calendar.js";
+
+const router = Router();
+
+// GET /api/integrations/google/auth?agentId=xxx
+router.get("/google/auth", (req, res) => {
+  const { agentId } = req.query;
+  if (!agentId || typeof agentId !== "string") {
+    return res.status(400).json({ error: "agentId required" });
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return res.status(503).json({ error: "Google OAuth not configured" });
+  }
+
+  const authUrl = getAuthUrl(agentId);
+  res.json({ authUrl });
+});
+
+// GET /api/integrations/google/callback (OAuth redirect)
+router.get("/google/callback", async (req, res) => {
+  const { code, state: agentId } = req.query;
+
+  if (!code || typeof code !== "string" || !agentId || typeof agentId !== "string") {
+    return res.status(400).send("Invalid OAuth callback");
+  }
+
+  try {
+    const tokens = await exchangeCodeForTokens(code);
+
+    await db
+      .update(agentsTable)
+      .set({
+        googleCalendarAccessToken: tokens.access_token ?? null,
+        googleCalendarRefreshToken: tokens.refresh_token ?? null,
+        googleCalendarConnected: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentsTable.id, agentId));
+
+    // Zurück zum Frontend
+    res.redirect(`${process.env.FRONTEND_URL ?? ""}/agents/${agentId}?calendar=connected`);
+  } catch (err) {
+    console.error("Google OAuth callback error:", err);
+    res.status(500).send("OAuth callback failed");
+  }
+});
+
+export default router;
+```
+
+**Füge in `artifacts/api-server/src/routes/index.ts` hinzu:**
+```typescript
+import integrationsRouter from "./integrations.js";
+router.use("/integrations", integrationsRouter);
+```
+
+**Aktualisiere `artifacts/api-server/src/routes/tools.ts`** — ersetze den `/calendar/availability` Handler mit der echten Implementierung:
+
+```typescript
+import { getAvailableSlots, createCalendarEvent } from "../lib/google-calendar.js";
+
+router.post("/calendar/availability", async (req: Request, res: Response) => {
+  const { date, agentId } = req.body;
+
+  try {
+    // Agent aus DB laden um Calendar Tokens zu holen
+    if (agentId) {
+      const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId));
+
+      if (agent?.googleCalendarConnected && agent.googleCalendarAccessToken && agent.googleCalendarRefreshToken) {
+        const slots = await getAvailableSlots(
+          agent.googleCalendarAccessToken,
+          agent.googleCalendarRefreshToken,
+          date
+        );
+
+        return res.json({
+          result: JSON.stringify({
+            available: slots.length > 0,
+            slots: slots.map((s) => ({ datetime: s, label: formatGermanDateTime(s) })),
+          }),
+        });
+      }
+    }
+
+    // Fallback: Placeholder-Slots (wenn kein Calendar verbunden)
+    const slots = generatePlaceholderSlots(date);
+    res.json({
+      result: JSON.stringify({
+        available: slots.length > 0,
+        slots: slots.map((s) => ({ datetime: s, label: formatGermanDateTime(s) })),
+        note: "Kalender nicht verbunden — Demo-Slots",
+      }),
+    });
+  } catch (err) {
+    console.error("Calendar availability error:", err);
+    res.json({ result: JSON.stringify({ available: false, slots: [], error: "Kalender-Fehler" }) });
+  }
+});
+```
+
+**Füge diese Secrets in Replit hinzu:**
+```
+GOOGLE_CLIENT_ID        = [Von console.cloud.google.com → APIs & Services → Credentials]
+GOOGLE_CLIENT_SECRET    = [Vom gleichen Ort]
+FRONTEND_URL            = [Deine Replit Frontend URL]
+```
+
+---
+
+## PHASE 3: MONETARISIERUNG & AUTH
+
+### Schritt 9: Stripe echte Integration
+
+**Installiere:**
+```bash
+cd artifacts/api-server && pnpm add stripe
+```
+
+**Ersetze `artifacts/api-server/src/routes/billing.ts` vollständig:**
+
+```typescript
+import { Router } from "express";
+import Stripe from "stripe";
+import { db, organizationsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-12-18.acacia" })
+  : null;
+
+const router = Router();
+
+const PLANS = [
+  {
+    key: "starter",
+    name: "Starter",
+    priceEuros: 99,
+    minutes: 300,
+    maxAgents: 1,
+    priceId: process.env.STRIPE_STARTER_PRICE_ID,
+    features: ["1 KI-Agent", "300 Minuten / Monat", "Terminbuchung", "E-Mail-Support", "14 Tage kostenlos"],
+  },
+  {
+    key: "professional",
+    name: "Professional",
+    priceEuros: 249,
+    minutes: 1000,
+    maxAgents: 3,
+    priceId: process.env.STRIPE_PROFESSIONAL_PRICE_ID,
+    features: ["3 KI-Agenten", "1.000 Minuten / Monat", "Alle Agent-Typen", "Google Kalender", "Priority Support"],
+  },
+  {
+    key: "business",
+    name: "Business",
+    priceEuros: 549,
+    minutes: 3000,
+    maxAgents: 10,
+    priceId: process.env.STRIPE_BUSINESS_PRICE_ID,
+    features: ["10 KI-Agenten", "3.000 Min / Monat", "CRM Integrationen", "Dedicated Support", "SLA"],
+  },
+];
+
+router.get("/plans", (_req, res) => res.json(PLANS));
+
+// POST /api/billing/checkout
+router.post("/checkout", async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
+
+  const { planKey, email, orgId } = req.body;
+  if (!planKey || !email) return res.status(400).json({ error: "planKey and email required" });
+
+  const plan = PLANS.find((p) => p.key === planKey);
+  if (!plan?.priceId) return res.status(400).json({ error: "Invalid plan or price not configured" });
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card", "sepa_debit"],
+      customer_email: email,
+      line_items: [{ price: plan.priceId, quantity: 1 }],
+      success_url: `${process.env.FRONTEND_URL}/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL}/billing`,
+      metadata: { orgId: orgId ?? "", planKey },
+      subscription_data: {
+        trial_period_days: 14,
+        metadata: { orgId: orgId ?? "", planKey },
+      },
+      locale: "de",
+    });
+
+    res.json({ checkoutUrl: session.url });
+  } catch (err: any) {
+    console.error("Stripe checkout error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/billing/webhook (Stripe Webhook)
+router.post("/webhook", async (req, res) => {
+  if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+    return res.status(503).json({ error: "Stripe webhook not configured" });
+  }
+
+  const sig = req.headers["stripe-signature"];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body, // raw body — braucht express.raw() Middleware
+      sig as string,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err: any) {
+    return res.status(400).send(`Webhook signature verification failed: ${err.message}`);
+  }
+
+  switch (event.type) {
+    case "customer.subscription.created":
+    case "customer.subscription.updated": {
+      const sub = event.data.object as Stripe.Subscription;
+      const orgId = sub.metadata?.orgId;
+      const planKey = sub.metadata?.planKey ?? "starter";
+      const plan = PLANS.find((p) => p.key === planKey);
+
+      if (orgId) {
+        await db
+          .update(organizationsTable)
+          .set({
+            plan: planKey,
+            stripeSubscriptionId: sub.id,
+            subscriptionStatus: sub.status,
+            minutesIncluded: plan?.minutes ?? 300,
+            updatedAt: new Date(),
+          })
+          .where(eq(organizationsTable.id, orgId));
+      }
+      break;
+    }
+    case "customer.subscription.deleted": {
+      const sub = event.data.object as Stripe.Subscription;
+      const orgId = sub.metadata?.orgId;
+      if (orgId) {
+        await db
+          .update(organizationsTable)
+          .set({ subscriptionStatus: "canceled", updatedAt: new Date() })
+          .where(eq(organizationsTable.id, orgId));
+      }
+      break;
+    }
+  }
+
+  res.json({ received: true });
+});
+
+router.get("/usage", async (_req, res) => {
+  // TODO: echten orgId aus Auth-Middleware lesen
+  res.json({
+    plan: "starter",
+    minutesUsed: 0,
+    minutesIncluded: 300,
+    subscriptionStatus: "trialing",
+    billingCycleStart: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString(),
+    currentPeriodEnd: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString(),
+  });
+});
+
+router.get("/portal", async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
+
+  const { stripeCustomerId } = req.query;
+  if (!stripeCustomerId || typeof stripeCustomerId !== "string") {
+    return res.status(400).json({ error: "stripeCustomerId required" });
+  }
+
+  try {
+    const session = await stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: `${process.env.FRONTEND_URL}/billing`,
+    });
+    res.json({ url: session.url });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+export default router;
+```
+
+**Wichtig für Stripe Webhooks** — füge in `artifacts/api-server/src/app.ts` VOR dem `express.json()` Middleware hinzu:
+
+```typescript
+// Stripe Webhook braucht raw body
+app.use("/api/billing/webhook", express.raw({ type: "application/json" }));
+```
+
+**Füge diese Secrets in Replit hinzu:**
+```
+STRIPE_SECRET_KEY             = [sk_test_... oder sk_live_... von dashboard.stripe.com]
+STRIPE_WEBHOOK_SECRET         = [whsec_... von Stripe Webhook Endpoint]
+STRIPE_STARTER_PRICE_ID       = [price_... erstelle in Stripe Dashboard]
+STRIPE_PROFESSIONAL_PRICE_ID  = [price_...]
+STRIPE_BUSINESS_PRICE_ID      = [price_...]
+```
+
+### Schritt 10: Clerk Auth integrieren
+
+**Installiere:**
+```bash
+cd artifacts/api-server && pnpm add @clerk/express
+cd artifacts/voiceflow && pnpm add @clerk/react
+```
+
+**Erstelle `artifacts/api-server/src/middlewares/auth.ts`:**
+
+```typescript
+import { ClerkExpressRequireAuth } from "@clerk/express";
+
+// Middleware die alle nicht-öffentlichen Routen schützt
+export const requireAuth = ClerkExpressRequireAuth({
+  onError: (_err, _req, res) => {
+    res.status(401).json({ error: "Unauthorized — please sign in" });
+  },
+});
+```
+
+**Füge in `artifacts/api-server/src/routes/index.ts` die Auth-Middleware hinzu:**
+
+```typescript
+import { requireAuth } from "../middlewares/auth.js";
+
+// Öffentliche Routen zuerst
+router.use(healthRouter);
+router.use("/webhooks", webhooksRouter);        // Webhooks brauchen KEINE Auth
+router.use("/billing/webhook", billingRouter);  // Stripe Webhook braucht KEINE Auth
+
+// Alle weiteren Routen REQUIRE Auth
+router.use(requireAuth);
+router.use("/agents", agentsRouter);
+router.use("/calls", callsRouter);
+router.use("/dashboard", dashboardRouter);
+router.use("/billing", billingRouter);
+router.use("/tools", toolsRouter);
+router.use("/integrations", integrationsRouter);
+```
+
+**Füge in `artifacts/api-server/src/app.ts` Clerk-Konfiguration hinzu:**
+
+```typescript
+import { clerkMiddleware } from "@clerk/express";
+
+app.use(clerkMiddleware()); // Vor allen anderen Middlewares
+```
+
+**Frontend: Wrape `artifacts/voiceflow/src/main.tsx` mit ClerkProvider:**
+
+```typescript
+import { ClerkProvider } from "@clerk/react";
+
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+createRoot(document.getElementById("root")!).render(
+  <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    <App />
+  </ClerkProvider>
+);
+```
+
+**Füge diese Secrets hinzu:**
+```
+CLERK_SECRET_KEY                      = [sk_test_... von clerk.com Dashboard → API Keys]
+VITE_CLERK_PUBLISHABLE_KEY            = [pk_test_... gleicher Ort]
+```
+
+---
+
+## FEHLERBEHANDLUNG & QUALITÄTSSICHERUNG
+
+Nach jeder Phase — TypeScript-Check ausführen:
+```bash
+cd artifacts/api-server && pnpm run typecheck
+```
+
+Falls Fehler bei neuen npm-Paketen:
+```bash
+pnpm install
+```
+
+Falls DB-Schema-Änderungen nicht angewendet:
+```bash
+cd lib/db && pnpm run push
+```
+
+### Test-Reihenfolge für Phase 1:
+1. App starten → `artifacts/api-server` Server läuft ohne Fehler
+2. Neuen Agent im Dashboard erstellen
+3. In Replit Logs prüfen: `Vapi assistant created: asst_xxx`
+4. In Vapi Dashboard (app.vapi.ai) → Assistants: Neuer Agent erscheint
+5. Vapi Webhook konfigurieren: `https://deine-url.replit.app/api/webhooks/vapi`
+6. Testanruf in Vapi Dashboard starten → In App-Logs: `call-started` Event
+
+---
+
+## WICHTIGE HINWEISE
+
+- **Reihenfolge einhalten**: Phase 1 vor Phase 2 vor Phase 3
+- **Keine bestehenden Dateien löschen** ohne explizite Anweisung — nur die beschriebenen Stellen ändern
+- **DSGVO**: Keine personenbezogenen Daten aus Anrufen an US-Server loggen — Anthropic/ElevenLabs haben EU-DPAs
+- **Stripe Webhook Testing**: In Replit `stripe listen --forward-to localhost:3001/api/billing/webhook` oder Stripe CLI nutzen
+- **Google OAuth Redirect**: In Google Cloud Console die Replit-URL als authorized redirect URI eintragen: `https://deine-url.replit.app/api/integrations/google/callback`
+- **Vapi Webhook URL**: In app.vapi.ai → Settings → Server URL eintragen
+
+---
+
+*VoiceFlow AI Next Steps Prompt v1.0 | Phase 1–3 | Juni 2026*
