@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, agentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getAuthUrl, exchangeCodeForTokens } from "../lib/google-calendar.js";
+import { getFrontendUrl } from "../lib/base-url.js";
 
 const router = Router();
 
@@ -39,7 +40,7 @@ router.get("/google/callback", async (req, res) => {
       })
       .where(eq(agentsTable.id, agentId));
 
-    res.redirect(`${process.env.FRONTEND_URL ?? ""}/agents/${agentId}?calendar=connected`);
+    res.redirect(`${getFrontendUrl()}/agents/${agentId}?calendar=connected`);
   } catch (err) {
     console.error("Google OAuth callback error:", err);
     res.status(500).send("OAuth callback failed");

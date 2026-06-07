@@ -1,4 +1,5 @@
 import { VapiClient } from "@vapi-ai/server-sdk";
+import { getApiBaseUrl } from "./base-url.js";
 
 export const vapi = process.env.VAPI_API_KEY
   ? new VapiClient({ token: process.env.VAPI_API_KEY })
@@ -35,7 +36,7 @@ const BOOKING_TOOLS = [
         required: ["date"],
       },
     },
-    server: { url: `${process.env.API_BASE_URL}/api/tools/calendar/availability` },
+    server: { url: `${getApiBaseUrl()}/api/tools/calendar/availability` },
   },
   {
     type: "function" as const,
@@ -53,7 +54,7 @@ const BOOKING_TOOLS = [
         required: ["customerName", "customerPhone", "service", "datetime"],
       },
     },
-    server: { url: `${process.env.API_BASE_URL}/api/tools/calendar/book` },
+    server: { url: `${getApiBaseUrl()}/api/tools/calendar/book` },
   },
   {
     type: "function" as const,
@@ -68,7 +69,7 @@ const BOOKING_TOOLS = [
         required: ["reason"],
       },
     },
-    server: { url: `${process.env.API_BASE_URL}/api/tools/transfer` },
+    server: { url: `${getApiBaseUrl()}/api/tools/transfer` },
   },
 ];
 
@@ -87,7 +88,7 @@ export async function createVapiAssistant(params: CreateAssistantParams) {
           required: ["reason"],
         },
       },
-      server: { url: `${process.env.API_BASE_URL}/api/tools/transfer` },
+      server: { url: `${getApiBaseUrl()}/api/tools/transfer` },
     },
   ];
 
@@ -114,7 +115,7 @@ export async function createVapiAssistant(params: CreateAssistantParams) {
     endCallPhrases: ["auf wiederhören", "tschüss", "danke tschüss"],
     silenceTimeoutSeconds: 30,
     maxDurationSeconds: 600,
-    serverUrl: `${process.env.API_BASE_URL}/api/webhooks/vapi`,
+    serverUrl: `${getApiBaseUrl()}/api/webhooks/vapi`,
     serverUrlSecret: process.env.VAPI_WEBHOOK_SECRET,
   });
 

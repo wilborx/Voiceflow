@@ -1,9 +1,10 @@
 import { google } from "googleapis";
+import { getApiBaseUrl } from "./base-url.js";
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  `${process.env.API_BASE_URL}/api/integrations/google/callback`
+  `${getApiBaseUrl()}/api/integrations/google/callback`
 );
 
 export function getAuthUrl(agentId: string): string {

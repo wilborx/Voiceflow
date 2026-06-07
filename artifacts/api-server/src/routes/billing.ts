@@ -2,6 +2,7 @@ import { Router } from "express";
 import Stripe from "stripe";
 import { db, organizationsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { getFrontendUrl } from "../lib/base-url.js";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-12-18.acacia" as any })
@@ -62,8 +63,8 @@ router.post("/checkout", async (req, res) => {
       payment_method_types: ["card", "sepa_debit"],
       customer_email: email,
       line_items: [{ price: plan.priceId, quantity: 1 }],
-      success_url: `${process.env.FRONTEND_URL}/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL}/billing`,
+      success_url: `${getFrontendUrl()}/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${getFrontendUrl()}/billing`,
       metadata: { orgId: orgId ?? "", planKey },
       subscription_data: {
         trial_period_days: 14,
@@ -157,7 +158,7 @@ router.get("/portal", async (req, res) => {
   try {
     const session = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
-      return_url: `${process.env.FRONTEND_URL}/billing`,
+      return_url: `${getFrontendUrl()}/billing`,
     });
     res.json({ url: session.url });
   } catch (err: any) {
