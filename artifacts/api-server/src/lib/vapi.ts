@@ -102,8 +102,8 @@ export async function createVapiAssistant(params: CreateAssistantParams) {
       tools,
     },
     voice: {
-      provider: "11labs",
-      voiceId: params.voiceId ?? "21m00Tcm4TlvDq8ikWAM",
+      provider: "openai",
+      voiceId: params.voiceId ?? "nova",
     },
     transcriber: {
       provider: "deepgram",
