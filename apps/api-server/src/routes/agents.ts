@@ -1,8 +1,8 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, agentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { createVapiAssistant, deleteVapiAssistant, updateVapiAssistant } from "../lib/vapi.js";
-import { purchaseGermanPhoneNumber } from "../lib/telnyx.js";
+import { purchaseGermanPhoneNumber, releasePhoneNumber } from "../lib/telnyx.js";
 import {
   CreateAgentBody,
   UpdateAgentBody,
@@ -35,7 +35,7 @@ PFLICHTINFORMATIONEN für eine Buchung:
   advisory: `Du bist eine professionelle KI-Beratungsassistentin.
 
 AUFGABE:
-Beantworte Fragen, qualifiziere Leads und leite komplexe Anfragen an menschliche Mitarbeiter weiter.
+Beantworten Fragen, qualifiziere Leads und leite komplexe Anfragen weiter.
 
 GESPRÄCHSFÜHRUNG:
 - Professionell, kompetent und vertrauenswürdig
@@ -86,26 +86,27 @@ function mapAgent(agent: typeof agentsTable.$inferSelect) {
 }
 
 // GET /api/agents
-router.get("/", async (req, res) => {
+router.get("/", async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const agents = await db.select().from(agentsTable).orderBy(agentsTable.createdAt);
     res.json(agents.map(mapAgent));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    console.error("GET /api/agents error:", err);
+    next(err);
   }
 });
 
 // POST /api/agents
-router.post("/", async (req, res) => {
-  const parsed = CreateAgentBody.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.message });
-  }
-
-  const body = parsed.data;
-  const systemPrompt = body.systemPrompt || SYSTEM_PROMPT_TEMPLATES[body.type] || "";
-
+router.post("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const parsed = CreateAgentBody.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.message });
+    }
+
+    const body = parsed.data;
+    const systemPrompt = body.systemPrompt || SYSTEM_PROMPT_TEMPLATES[body.type] || "";
+
     const [agent] = await db.insert(agentsTable).values({
       name: body.name,
       type: body.type as "booking" | "advisory" | "hr_screening" | "hr_onboarding",
@@ -155,47 +156,49 @@ router.post("/", async (req, res) => {
 
     res.status(201).json(mapAgent(agent));
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    console.error("POST /api/agents error:", err);
+    next(err);
   }
 });
 
 // GET /api/agents/:id
-router.get("/:id", async (req, res) => {
-  const parsed = GetAgentParams.safeParse(req.params);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
-
+router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const parsed = GetAgentParams.safeParse(req.params);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
+
     const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, parsed.data.id));
     if (!agent) return res.status(404).json({ error: "Not found" });
     res.json(mapAgent(agent));
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    console.error("GET /api/agents/:id error:", err);
+    next(err);
   }
 });
 
 // PATCH /api/agents/:id
-router.patch("/:id", async (req, res) => {
-  const paramsParsed = UpdateAgentParams.safeParse(req.params);
-  if (!paramsParsed.success) return res.status(400).json({ error: "Invalid ID" });
-
-  const bodyParsed = UpdateAgentBody.safeParse(req.body);
-  if (!bodyParsed.success) return res.status(400).json({ error: bodyParsed.error.message });
-
-  const body = bodyParsed.data;
-  const updates: Partial<typeof agentsTable.$inferInsert> = {
-    updatedAt: new Date(),
-  };
-  if (body.name !== undefined) updates.name = body.name;
-  if (body.status !== undefined) updates.status = body.status as "active" | "inactive" | "draft";
-  if (body.businessName !== undefined) updates.businessName = body.businessName ?? null;
-  if (body.businessHoursOpen !== undefined) updates.businessHoursOpen = body.businessHoursOpen ?? null;
-  if (body.businessHoursClose !== undefined) updates.businessHoursClose = body.businessHoursClose ?? null;
-  if (body.voiceId !== undefined) updates.voiceId = body.voiceId ?? null;
-  if (body.voiceName !== undefined) updates.voiceName = body.voiceName ?? null;
-  if (body.language !== undefined) updates.language = body.language ?? "de";
-  if (body.systemPrompt !== undefined) updates.systemPrompt = body.systemPrompt;
-
+router.patch("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const paramsParsed = UpdateAgentParams.safeParse(req.params);
+    if (!paramsParsed.success) return res.status(400).json({ error: "Invalid ID" });
+
+    const bodyParsed = UpdateAgentBody.safeParse(req.body);
+    if (!bodyParsed.success) return res.status(400).json({ error: bodyParsed.error.message });
+
+    const body = bodyParsed.data;
+    const updates: Partial<typeof agentsTable.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.status !== undefined) updates.status = body.status as "active" | "inactive" | "draft";
+    if (body.businessName !== undefined) updates.businessName = body.businessName ?? null;
+    if (body.businessHoursOpen !== undefined) updates.businessHoursOpen = body.businessHoursOpen ?? null;
+    if (body.businessHoursClose !== undefined) updates.businessHoursClose = body.businessHoursClose ?? null;
+    if (body.voiceId !== undefined) updates.voiceId = body.voiceId ?? null;
+    if (body.voiceName !== undefined) updates.voiceName = body.voiceName ?? null;
+    if (body.language !== undefined) updates.language = body.language ?? "de";
+    if (body.systemPrompt !== undefined) updates.systemPrompt = body.systemPrompt;
+
     const [agent] = await db
       .update(agentsTable)
       .set(updates)
@@ -217,17 +220,18 @@ router.patch("/:id", async (req, res) => {
     }
 
     res.json(mapAgent(agent));
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    console.error("PATCH /api/agents/:id error:", err);
+    next(err);
   }
 });
 
-// POST /api/agents/:id/sync-vapi — force-patch Vapi assistant with openai voice
-router.post("/:id/sync-vapi", async (req, res) => {
-  const parsed = GetAgentParams.safeParse(req.params);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
-
+// POST /api/agents/:id/sync-vapi
+router.post("/:id/sync-vapi", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const parsed = ActivateAgentParams.safeParse(req.params);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
+
     const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, parsed.data.id));
     if (!agent) return res.status(404).json({ error: "Not found" });
     if (!agent.vapiAssistantId) return res.status(400).json({ error: "No Vapi assistant linked" });
@@ -238,36 +242,41 @@ router.post("/:id/sync-vapi", async (req, res) => {
     });
 
     res.json({ ok: true, vapiAssistantId: agent.vapiAssistantId });
-  } catch (err: any) {
-    res.status(500).json({ error: err?.message ?? "Internal server error" });
+  } catch (err) {
+    console.error("POST /api/agents/:id/sync-vapi error:", err);
+    next(err);
   }
 });
 
 // DELETE /api/agents/:id
-router.delete("/:id", async (req, res) => {
-  const parsed = DeleteAgentParams.safeParse(req.params);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
-
+router.delete("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const parsed = DeleteAgentParams.safeParse(req.params);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
+
     const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, parsed.data.id));
 
     if (agent?.vapiAssistantId) {
       await deleteVapiAssistant(agent.vapiAssistantId);
     }
+    if (agent?.phoneNumber) {
+      await releasePhoneNumber(agent.phoneNumber);
+    }
 
     await db.delete(agentsTable).where(eq(agentsTable.id, parsed.data.id));
     res.status(204).send();
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    console.error("DELETE /api/agents/:id error:", err);
+    next(err);
   }
 });
 
 // POST /api/agents/:id/activate
-router.post("/:id/activate", async (req, res) => {
-  const parsed = ActivateAgentParams.safeParse(req.params);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
-
+router.post("/:id/activate", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const parsed = ActivateAgentParams.safeParse(req.params);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
+
     const [agent] = await db
       .update(agentsTable)
       .set({ status: "active", updatedAt: new Date() })
@@ -275,17 +284,18 @@ router.post("/:id/activate", async (req, res) => {
       .returning();
     if (!agent) return res.status(404).json({ error: "Not found" });
     res.json(mapAgent(agent));
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    console.error("POST /api/agents/:id/activate error:", err);
+    next(err);
   }
 });
 
 // POST /api/agents/:id/deactivate
-router.post("/:id/deactivate", async (req, res) => {
-  const parsed = DeactivateAgentParams.safeParse(req.params);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
-
+router.post("/:id/deactivate", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const parsed = DeactivateAgentParams.safeParse(req.params);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
+
     const [agent] = await db
       .update(agentsTable)
       .set({ status: "inactive", updatedAt: new Date() })
@@ -293,8 +303,9 @@ router.post("/:id/deactivate", async (req, res) => {
       .returning();
     if (!agent) return res.status(404).json({ error: "Not found" });
     res.json(mapAgent(agent));
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    console.error("POST /api/agents/:id/deactivate error:", err);
+    next(err);
   }
 });
 

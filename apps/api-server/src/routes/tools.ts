@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, agentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { sendSMS } from "../lib/telnyx.js";
@@ -6,10 +6,10 @@ import { getAvailableSlots, createCalendarEvent } from "../lib/google-calendar.j
 
 const router = Router();
 
-router.post("/calendar/availability", async (req: Request, res: Response) => {
-  const { date, agentId } = req.body;
-
+router.post("/calendar/availability", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { date, agentId } = req.body as { date?: string; agentId?: string };
+
     if (agentId) {
       const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId));
 
@@ -17,7 +17,7 @@ router.post("/calendar/availability", async (req: Request, res: Response) => {
         const slots = await getAvailableSlots(
           agent.googleCalendarAccessToken,
           agent.googleCalendarRefreshToken,
-          date
+          date ?? ""
         );
 
         return res.json({
@@ -29,7 +29,7 @@ router.post("/calendar/availability", async (req: Request, res: Response) => {
       }
     }
 
-    const slots = generatePlaceholderSlots(date);
+    const slots = generatePlaceholderSlots(date ?? "");
     res.json({
       result: JSON.stringify({
         available: slots.length > 0,
@@ -49,13 +49,19 @@ router.post("/calendar/availability", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/calendar/book", async (req: Request, res: Response) => {
-  const { customerName, customerPhone, service, datetime, agentId } = req.body;
-
-  const confirmationNumber = Math.random().toString(36).slice(-6).toUpperCase();
-
+router.post("/calendar/book", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    if (agentId) {
+    const { customerName, customerPhone, service, datetime, agentId } = req.body as {
+      customerName?: string;
+      customerPhone?: string;
+      service?: string;
+      datetime?: string;
+      agentId?: string;
+    };
+
+    const confirmationNumber = Math.random().toString(36).slice(-6).toUpperCase();
+
+    if (agentId && customerPhone && service && datetime) {
       const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId));
 
       if (agent?.googleCalendarConnected && agent.googleCalendarAccessToken && agent.googleCalendarRefreshToken) {
@@ -66,14 +72,14 @@ router.post("/calendar/book", async (req: Request, res: Response) => {
             summary: service,
             datetime,
             durationMinutes: 60,
-            customerName,
+            customerName: customerName ?? "",
             customerPhone,
           }
         );
       }
     }
 
-    if (customerPhone) {
+    if (customerPhone && service && datetime) {
       const formattedDate = formatGermanDateTime(datetime);
       const smsText = `✓ Ihr Termin für ${service} am ${formattedDate} wurde bestätigt. Bestätigungs-Nr.: ${confirmationNumber}`;
       await sendSMS(customerPhone, smsText);
@@ -83,7 +89,9 @@ router.post("/calendar/book", async (req: Request, res: Response) => {
       result: JSON.stringify({
         success: true,
         confirmationNumber,
-        message: `Termin erfolgreich gebucht für ${formatGermanDateTime(datetime)}. Eine Bestätigung wurde an ${customerPhone} gesendet.`,
+        message: customerPhone && service && datetime
+          ? `Termin erfolgreich gebucht für ${formatGermanDateTime(datetime)}. Eine Bestätigung wurde an ${customerPhone} gesendet.`
+          : "Termin bestätigt.",
       }),
     });
   } catch (err) {
@@ -97,9 +105,7 @@ router.post("/calendar/book", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/transfer", async (req: Request, res: Response) => {
-  const { reason } = req.body;
-  console.log("Transfer to human requested:", reason);
+router.post("/transfer", (_req: Request, res: Response) => {
   res.json({
     result: "Ich verbinde Sie jetzt mit einem Mitarbeiter. Bitte bleiben Sie in der Leitung.",
   });

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, callsTable, agentsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { GetCallParams, ListCallsQueryParams } from "@workspace/api-zod";
@@ -27,42 +27,41 @@ function mapCall(call: typeof callsTable.$inferSelect, agentName?: string | null
 }
 
 // GET /api/calls
-router.get("/", async (req, res) => {
-  const parsed = ListCallsQueryParams.safeParse(req.query);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-
-  const { agentId, status, limit } = parsed.data;
-
+router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let query = db
+    const parsed = ListCallsQueryParams.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+
+    const { agentId, status, limit } = parsed.data;
+
+    const results = await db
       .select({
         call: callsTable,
         agentName: agentsTable.name,
       })
       .from(callsTable)
       .leftJoin(agentsTable, eq(callsTable.agentId, agentsTable.id))
-      .orderBy(desc(callsTable.createdAt))
-      .$dynamic();
+      .orderBy(desc(callsTable.createdAt));
 
-    const results = await query.limit(limit ?? 50);
     const filtered = results.filter((r) => {
       if (agentId && r.call.agentId !== agentId) return false;
       if (status && r.call.status !== status) return false;
       return true;
     });
 
-    res.json(filtered.map((r) => mapCall(r.call, r.agentName)));
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+    res.json(filtered.slice(0, limit ?? 50).map((r) => mapCall(r.call, r.agentName)));
+  } catch (err) {
+    console.error("GET /api/calls error:", err);
+    next(err);
   }
 });
 
 // GET /api/calls/:id
-router.get("/:id", async (req, res) => {
-  const parsed = GetCallParams.safeParse(req.params);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
-
+router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const parsed = GetCallParams.safeParse(req.params);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid ID" });
+
     const results = await db
       .select({ call: callsTable, agentName: agentsTable.name })
       .from(callsTable)
@@ -73,8 +72,9 @@ router.get("/:id", async (req, res) => {
     if (!results.length) return res.status(404).json({ error: "Not found" });
     const { call, agentName } = results[0];
     res.json(mapCall(call, agentName));
-  } catch {
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    console.error("GET /api/calls/:id error:", err);
+    next(err);
   }
 });
 

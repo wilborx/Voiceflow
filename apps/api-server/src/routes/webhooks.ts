@@ -1,20 +1,19 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, callsTable, agentsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import { sendSMS } from "../lib/telnyx.js";
 
 const router = Router();
 
-router.post("/vapi", async (req: Request, res: Response) => {
-  const secret = req.headers["x-vapi-secret"];
-  if (process.env.VAPI_WEBHOOK_SECRET && secret !== process.env.VAPI_WEBHOOK_SECRET) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
-  const event = req.body;
-  const messageType = event?.message?.type;
-
+router.post("/vapi", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const secret = req.headers["x-vapi-secret"];
+    if (process.env.VAPI_WEBHOOK_SECRET && secret !== process.env.VAPI_WEBHOOK_SECRET) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const event = req.body;
+    const messageType = event?.message?.type;
+
     switch (messageType) {
       case "call-started": {
         const { call } = event.message;
@@ -40,7 +39,7 @@ router.post("/vapi", async (req: Request, res: Response) => {
             .set({ totalCalls: sql`${agentsTable.totalCalls} + 1` })
             .where(eq(agentsTable.id, agentResult[0].id));
         }
-        break;
+        return res.json({ received: true });
       }
 
       case "call-ended": {
@@ -78,7 +77,7 @@ router.post("/vapi", async (req: Request, res: Response) => {
             })
             .where(eq(agentsTable.id, callRecord[0].agentId));
         }
-        break;
+        return res.json({ received: true });
       }
 
       case "function-call": {
@@ -88,13 +87,11 @@ router.post("/vapi", async (req: Request, res: Response) => {
       }
 
       default:
-        break;
+        return res.json({ received: true });
     }
-
-    res.json({ received: true });
   } catch (err) {
     console.error("Webhook error:", err);
-    res.status(500).json({ error: "Internal server error" });
+    next(err);
   }
 });
 

@@ -54,3 +54,13 @@ export async function sendSMS(to: string, message: string): Promise<boolean> {
     return false;
   }
 }
+
+export async function releasePhoneNumber(phoneNumber: string): Promise<void> {
+  if (!telnyx) return;
+  try {
+    await (telnyx.phoneNumbers as any).delete({ phone_number: phoneNumber });
+    console.log(`Released Telnyx number: ${phoneNumber}`);
+  } catch (err) {
+    console.error(`Failed to release Telnyx number ${phoneNumber}:`, err);
+  }
+}

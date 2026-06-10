@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth, SignIn } from "@clerk/react";
+import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 import NotFound from "@/pages/not-found";
 import DashboardPage from "@/pages/dashboard";
 import AgentsPage from "@/pages/agents";
@@ -84,6 +85,16 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  setBaseUrl(import.meta.env.VITE_API_URL ?? "http://localhost:8080");
+  setAuthTokenGetter(async () => {
+    try {
+      const { getToken } = await import("@clerk/react");
+      return getToken();
+    } catch {
+      return null;
+    }
+  });
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

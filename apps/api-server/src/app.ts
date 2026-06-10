@@ -1,10 +1,26 @@
+import "dotenv/config";
 import express, { type Express } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import pinoHttp from "pino-http";
-import router from "./routes";
+import { clerkSetup } from "./middlewares/auth";
 import { logger } from "./lib/logger";
+import router from "./routes";
 
 const app: Express = express();
+
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL
+      ? [process.env.FRONTEND_URL]
+      : ["http://localhost:5173"],
+    credentials: true,
+  })
+);
+
+// Stripe Webhook braucht raw body -- vor JSON-Parser
+app.use("/api/billing/webhook", express.raw({ type: "application/json" }));
 
 app.use(
   pinoHttp({
@@ -18,19 +34,14 @@ app.use(
         };
       },
       res(res) {
-        return {
-          statusCode: res.statusCode,
-        };
+        return { statusCode: res.statusCode };
       },
     },
   }),
 );
-app.use(cors());
-
-app.use("/api/billing/webhook", express.raw({ type: "application/json" }));
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(clerkSetup);
 
 app.use("/api", router);
 

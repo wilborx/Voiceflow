@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Check, ChevronRight } from "lucide-react";
-import { useCreateAgent, getListAgentsQueryKey } from "@workspace/api-client-react";
+import { Check, ChevronRight, Loader2 } from "lucide-react";
+import { useCreateAgent, getListAgentsQueryKey, useListVoices, useGetPromptTemplates } from "@workspace/api-client-react";
+import type { Voice } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import TopNav from "@/components/layout/TopNav";
@@ -11,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+
+type AgentType = "booking" | "advisory" | "hr_screening" | "hr_onboarding";
 
 const STEPS = [
   { id: 1, title: "Agent-Typ" },
@@ -54,64 +57,31 @@ const AGENT_TYPES = [
   },
 ];
 
-const VOICES = [
-  { id: "21m00Tcm4TlvDq8ikWAM", name: "Lena", description: "Freundlich, warm" },
-  { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", description: "Professionell, klar" },
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Bella", description: "Sanft, vertrauensvoll" },
-  { id: "ErXwobaYiN019PkySvjV", name: "Antoni", description: "Ruhig, kompetent" },
-];
-
-const PROMPT_TEMPLATES: Record<string, string> = {
-  booking: `Du bist eine freundliche KI-Telefonassistentin. Dein Name ist Lena.
-
-AUFGABE:
-Nimm Terminanfragen entgegen und buche Termine direkt ins Kalendersystem.
-
-GESPRÄCHSFÜHRUNG:
-- Sprich immer Deutsch, professionell und warmherzig
-- Halte Antworten kurz (max. 2 Sätze)
-- Frage nur EINE Sache auf einmal
-- Bestätige wichtige Angaben durch Wiederholen
-
-PFLICHTINFORMATIONEN:
-1. Gewünschte Behandlung/Service
-2. Wunschdatum und -uhrzeit
-3. Vollständiger Name des Kunden
-4. Rückrufnummer für Bestätigung`,
-  advisory: `Du bist eine professionelle KI-Beratungsassistentin.
-
-AUFGABE:
-Beantworte Fragen, qualifiziere Leads und leite komplexe Anfragen weiter.
-
-GESPRÄCHSFÜHRUNG:
-- Professionell, kompetent und vertrauenswürdig
-- Stelle klärende Fragen um den Bedarf zu verstehen
-- Halte Antworten präzise und informativ`,
-  hr_screening: `Du bist eine KI-Assistentin für HR-Erstgespräche.
-
-AUFGABE:
-Führe strukturierte Erstgespräche mit Kandidaten.
-
-GESPRÄCHSFÜHRUNG:
-- Freundlich und professionell
-- Stelle eine Frage nach der anderen
-- Bestätige und fasse Antworten zusammen`,
-  hr_onboarding: `Du bist eine digitale Onboarding-Assistentin.
-
-AUFGABE:
-Beantworte Fragen neuer Mitarbeiter zu Einarbeitung und Abläufen.
-
-GESPRÄCHSFÜHRUNG:
-- Hilfsbereit und geduldig
-- Erkläre Prozesse klar und verständlich`,
-};
-
 export default function AgentNewPage() {
   const [step, setStep] = useState(1);
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const { toast } = useToast();
   const createAgent = useCreateAgent();
+  const { data: voices = [] } = useListVoices();
+  const { data: promptTemplates } = useGetPromptTemplates();
+
+  const fallbackVoices: Voice[] = [
+    { id: "21m00Tcm4TlvDq8ikWAM", name: "Lena", description: "Freundlich, warm" },
+    { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", description: "Professionell, klar" },
+    { id: "EXAVITQu4vr4xnSDxMaL", name: "Bella", description: "Sanft, vertrauensvoll" },
+    { id: "ErXwobaYiN019PkySvjV", name: "Antoni", description: "Ruhig, kompetent" },
+  ];
+  const fallbackPromptTemplates = {
+    booking: "Du bist eine freundliche KI-Telefonassistentin. Dein Name ist Lena.\n\nAUFGABE:\nNimm Terminanfragen entgegen und buche Termine direkt ins Kalendersystem.\n\nGESPRÄCHSFÜHRUNG:\n- Sprich immer Deutsch, professionell und warmherzig\n- Halte Antworten kurz (max. 2 Sätze)\n- Frage nur EINE Sache auf einmal\n- Bestätige wichtige Angaben durch Wiederholen\n\nPFLICHTINFORMATIONEN:\n1. Gewünschte Behandlung/Service\n2. Wunschdatum und -uhrzeit\n3. Vollständiger Name des Kunden\n4. Rückrufnummer für Bestätigung",
+    advisory: "Du bist eine professionelle KI-Beratungsassistentin.\n\nAUFGABE:\nBeantworte Fragen, qualifiziere Leads und leite komplexe Anfragen weiter.\n\nGESPRÄCHSFÜHRUNG:\n- Professionell, kompetent und vertrauenswürdig\n- Stelle klärende Fragen um den Bedarf zu verstehen\n- Halte Antworten präzise und informativ",
+    hr_screening: "Du bist eine KI-Assistentin für HR-Erstgespräche.\n\nAUFGABE:\nFühre strukturierte Erstgespräche mit Kandidaten.\n\nGESPRÄCHSFÜHRUNG:\n- Freundlich und professionell\n- Stelle eine Frage nach der anderen\n- Bestätige und fasse Antworten zusammen",
+    hr_onboarding: "Du bist eine digitale Onboarding-Assistentin.\n\nAUFGABE:\nBeantworte Fragen neuer Mitarbeiter zu Einarbeitung und Abläufen.\n\nGESPRÄCHSFÜHRUNG:\n- Hilfsbereit und geduldig\n- Erkläre Prozesse klar und verständlich",
+  } as const satisfies Record<string, string>;
+  const activeVoices: Voice[] = voices.length > 0 ? voices : fallbackVoices;
+  const promptTemplatesDict = (promptTemplates && "type" in promptTemplates && (promptTemplates as { type?: string }).type)
+    ? { [(promptTemplates as { type: string }).type]: (promptTemplates as { prompt: string }).prompt }
+    : (promptTemplates as Record<string, string>) ?? {};
 
   const [form, setForm] = useState({
     type: "",
@@ -129,16 +99,18 @@ export default function AgentNewPage() {
   const update = (k: Partial<typeof form>) => setForm((f) => ({ ...f, ...k }));
 
   const handleTypeSelect = (type: string) => {
-    update({ type, systemPrompt: PROMPT_TEMPLATES[type] ?? "" });
+    const typed = type as AgentType;
+    const prompt = promptTemplatesDict[typed] ?? fallbackPromptTemplates[typed] ?? "";
+    update({ type: typed, systemPrompt: prompt });
   };
 
   const handleSubmit = async () => {
-    const agentName = form.name || `${AGENT_TYPES.find((t) => t.id === form.type)?.title} Agent`;
+    const     agentName = form.name || `${AGENT_TYPES.find((t) => t.id === form.type)?.title} Agent`;
     createAgent.mutate(
       {
         data: {
           name: agentName,
-          type: form.type as "booking" | "advisory" | "hr_screening" | "hr_onboarding",
+          type: form.type as AgentType,
           businessName: form.businessName || undefined,
           businessHoursOpen: form.businessHoursOpen || undefined,
           businessHoursClose: form.businessHoursClose || undefined,
@@ -288,7 +260,7 @@ export default function AgentNewPage() {
                 <h2 className="text-base font-semibold text-foreground mb-1">Stimme & Sprache</h2>
                 <p className="text-sm text-muted-foreground mb-5">Wie soll Ihr Agent klingen?</p>
                 <div className="grid grid-cols-2 gap-3 mb-5">
-                  {VOICES.map((v) => (
+                  {activeVoices.map((v) => (
                     <button
                       key={v.id}
                       data-testid={`card-voice-${v.id}`}

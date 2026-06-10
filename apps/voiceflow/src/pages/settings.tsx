@@ -1,25 +1,88 @@
 import { useState } from "react";
-import { Save } from "lucide-react";
+import { Save, RefreshCw, ExternalLink, CheckCircle2, XCircle, Clock } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import TopNav from "@/components/layout/TopNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useGetSettings, useUpdateSettings, useListIntegrations, type Integration } from "@workspace/api-client-react";
+
+function IntegrationCard({ integration }: { integration: Integration }) {
+  const statusConfig: Record<string, { icon: typeof CheckCircle2; label: string; className: string }> = {
+    connected: { icon: CheckCircle2, label: "Verbunden", className: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+    available: { icon: ExternalLink, label: "Verfügbar", className: "text-blue-600 bg-blue-50 border-blue-200" },
+    "coming-soon": { icon: Clock, label: "Demnächst", className: "text-amber-600 bg-amber-50 border-amber-200" },
+    disconnected: { icon: XCircle, label: "Getrennt", className: "text-red-600 bg-red-50 border-red-200" },
+  };
+
+  const config = statusConfig[integration.status] ?? statusConfig.available;
+  const StatusIcon = config.icon as React.ComponentType<{ size: number }>;
+
+  return (
+    <div className="border border-card-border rounded-lg p-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-sm font-medium text-foreground">{integration.name}</h3>
+          {integration.description && (
+            <p className="text-xs text-muted-foreground mt-1">{integration.description}</p>
+          )}
+        </div>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${config.className}`}>
+          <StatusIcon size={12} />
+          {config.label}
+        </span>
+      </div>
+      {integration.connectedAt !== null && integration.connectedAt !== undefined && (
+        <p className="text-xs text-muted-foreground mt-2">
+          Verbunden am {new Date(integration.connectedAt).toLocaleDateString("de-DE")}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const settingsQuery = useGetSettings();
+  const integrationsQuery = useListIntegrations();
+  const updateMutation = useUpdateSettings();
+  const [saving, setSaving] = useState(false);
+
+  const settings = settingsQuery.data;
+  const integrations = integrationsQuery.data ?? [];
+
   const [form, setForm] = useState({
-    orgName: "Mein Unternehmen",
-    email: "admin@meinunternehmen.de",
-    timezone: "Europe/Berlin",
-    language: "de",
+    name: settings?.name ?? "My Organization",
+    email: settings?.email ?? "admin@company.com",
+    timezone: settings?.timezone ?? "Europe/Berlin",
+    language: settings?.language ?? "de",
     vapiKey: "",
     elevenLabsKey: "",
   });
 
-  const handleSave = () => {
-    toast({ title: "Einstellungen gespeichert", description: "Ihre Einstellungen wurden erfolgreich gespeichert." });
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateMutation.mutateAsync({
+        data: {
+          name: form.name,
+          email: form.email,
+          timezone: form.timezone,
+          language: form.language,
+        },
+      });
+      toast({ title: "Settings saved", description: "Your settings have been updated successfully." });
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRefreshIntegrations = () => {
+    integrationsQuery.refetch();
+    toast({ title: "Refreshed", description: "Integration status updated." });
   };
 
   return (
@@ -40,13 +103,13 @@ export default function SettingsPage() {
         <div className="bg-card border border-card-border rounded-xl p-5 shadow-xs space-y-4">
           <h2 className="text-sm font-semibold text-foreground">Organisation</h2>
           <div>
-            <Label htmlFor="orgName" className="text-xs font-medium">Unternehmensname</Label>
+            <Label htmlFor="name" className="text-xs font-medium">Unternehmensname</Label>
             <Input
-              id="orgName"
-              data-testid="input-org-name"
+              id="name"
+              data-testid="input-name"
               className="mt-1.5 h-8 text-sm"
-              value={form.orgName}
-              onChange={(e) => setForm((f) => ({ ...f, orgName: e.target.value }))}
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
           </div>
           <div>
@@ -84,35 +147,34 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* API Keys */}
+        {/* Integrations */}
         <div className="bg-card border border-card-border rounded-xl p-5 shadow-xs space-y-4">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">API-Zugänge</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Verbinden Sie Ihre externen Dienste</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Integrationen</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Verbundene Dienste verwalten</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={handleRefreshIntegrations}
+              disabled={integrationsQuery.isFetching}
+              data-testid="button-refresh-integrations"
+            >
+              <RefreshCw size={12} className={integrationsQuery.isFetching ? "animate-spin" : ""} />
+            </Button>
           </div>
-          <div>
-            <Label htmlFor="vapiKey" className="text-xs font-medium">Vapi API-Schlüssel</Label>
-            <Input
-              id="vapiKey"
-              type="password"
-              data-testid="input-vapi-key"
-              className="mt-1.5 h-8 text-sm font-mono"
-              placeholder="vapi_..."
-              value={form.vapiKey}
-              onChange={(e) => setForm((f) => ({ ...f, vapiKey: e.target.value }))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="elevenLabsKey" className="text-xs font-medium">ElevenLabs API-Schlüssel</Label>
-            <Input
-              id="elevenLabsKey"
-              type="password"
-              data-testid="input-elevenlabs-key"
-              className="mt-1.5 h-8 text-sm font-mono"
-              placeholder="sk_..."
-              value={form.elevenLabsKey}
-              onChange={(e) => setForm((f) => ({ ...f, elevenLabsKey: e.target.value }))}
-            />
+          <div className="space-y-3">
+            {integrationsQuery.isLoading ? (
+              <p className="text-xs text-muted-foreground">Lädt...</p>
+            ) : integrationsQuery.isError ? (
+              <p className="text-xs text-red-600">Fehler beim Laden der Integrationen</p>
+            ) : (
+              integrations.map((intg) => (
+                <IntegrationCard key={intg.id} integration={intg} />
+              ))
+            )}
           </div>
         </div>
 

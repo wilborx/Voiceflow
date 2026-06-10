@@ -102,8 +102,8 @@ export async function createVapiAssistant(params: CreateAssistantParams) {
       tools,
     },
     voice: {
-      provider: "openai",
-      voiceId: params.voiceId ?? "nova",
+      provider: "11labs",
+      voiceId: params.voiceId ?? "21m00Tcm4TlvDq8ikWAM",
     },
     transcriber: {
       provider: "deepgram",
@@ -131,8 +131,8 @@ export async function updateVapiAssistant(assistantId: string, params: Partial<C
   if (params.name) patch.name = params.name;
 
   patch.voice = {
-    provider: "openai",
-    voiceId: params.voiceId ?? "nova",
+    provider: "11labs",
+    voiceId: params.voiceId ?? "21m00Tcm4TlvDq8ikWAM",
   };
 
   if (params.language) {
