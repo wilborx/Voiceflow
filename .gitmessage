@@ -1,0 +1,50 @@
+# ============================================================================
+# Conventional Commits Format (German/English hybrid for team)
+# ============================================================================
+#
+# <type>[optional scope]: <description>
+#
+# [optional body]
+#
+# [optional footer(s)]
+#
+# ============================================================================
+# Types (use lowercase):
+# ============================================================================
+#
+# feat     - Neue Feature (feature)
+# fix      - Bug Fix
+# docs     - Dokumentation Änderungen
+# style    - Code Style (whitespace, formatting, etc. - no code change)
+# refactor - Code Refactoring (keine neue Features/Bugfixes)
+# perf     - Performance Verbesserung
+# test     - Tests hinzufügen/ändern
+# build    - Build-System, CI/CD Änderungen
+# ci       - Continuous Integration Änderungen
+# chore    - Wartungsarbeiten (maintenance)
+# revert   - Änderung zurücksetzen (undo previous commit)
+#
+# ============================================================================
+# Scopes (bewährte Werte):
+# ============================================================================
+#
+# api       - API Server Änderungen
+# web       - Frontend/Voiceflow Änderungen
+# db        - Datenbank/Drizzle Schema
+# auth      - Authentifizierung (Clerk)
+# voice     - Voice/VAPI/Telnyx Integration
+# billing   - Stripe Zahlungen
+# ui        - UI Komponenten
+# types     - TypeScript Typen/Zod Schemas
+#
+# ============================================================================
+# Beispiele:
+# ============================================================================
+#
+# feat(api): add voice recording endpoint with consent validation
+# fix(web): resolve sidebar navigation active state bug
+# docs: update README with environment setup instructions
+# refactor(db): optimize organizations table indexing
+# feat(voice): implement OpenAI TTS fallback for VAPI outages
+#
+# ============================================================================

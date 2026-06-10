@@ -1,49 +1,84 @@
-# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+# ============================================================================
+# Dependencies
+# ============================================================================
+node_modules
+.cache/
 
-# compiled output
+# ============================================================================
+# Build artifacts / compiled output
+# ============================================================================
 dist
 tmp
 out-tsc
 *.tsbuildinfo
-.expo
-.expo-shared
+build/
+.next/
+out/
+*.tsbuild
 
-# dependencies
-node_modules
+# ============================================================================
+# Environment variables (DSGVO: niemals committen — Secrets/API-Keys)
+# ============================================================================
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+.env.example.local
 
-# IDEs and editors
-/.idea
+# ============================================================================
+# Voice recordings & personenbezogene Daten (DSGVO: niemals versionieren)
+# ============================================================================
+recordings/
+upload-data/
+recording-data/
+voice-recordings/
+
+# ============================================================================
+# IDE / Editor
+# ============================================================================
+.idea/
 .project
 .classpath
-.c9/
-*.launch
 .settings/
 *.sublime-workspace
+*.sublime-project
 
-# IDE - VSCode
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-
-# misc
-/.sass-cache
-/connect.lock
-/coverage
-/libpeerconnection.log
-npm-debug.log
-yarn-error.log
-testem.log
-/typings
-
-# System Files
-.DS_Store
-Thumbs.db
+!.vscode/*.code-snippets
 
 .cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
 
-# Replit
-.cache/
-.local/
+# ============================================================================
+# Test / Coverage
+# ============================================================================
+coverage/
+.coverage
+.nyc_output/
+test-results/
+playwright-report/
+.vitest
+
+# ============================================================================
+# System files
+# ============================================================================
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ============================================================================
+# OS / Temp
+# ============================================================================
+*.swp
+*.swo
+*~ 
+.tmp/
+*.tmp

@@ -1,0 +1,12 @@
+# Configuration for lint-staged
+# See: https://github.com/lint-staged/lint-staged
+
+"*":
+  # Run prettier on all staged files
+  - "prettier --write --ignore-unknown"
+
+"*.{ts,tsx}":
+  # Type check TypeScript files
+  - "bash -c 'tsc --noEmit --skipLibCheck'"
+  # Run eslint (if configured)
+  - "bash -c 'pnpm exec eslint --fix --max-warnings=0 || true'"

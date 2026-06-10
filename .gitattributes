@@ -1,0 +1,46 @@
+# ============================================================================
+# Git Attributes - Line endings, diff drivers, and file handling
+# ============================================================================
+
+# Text files - always normalize to LF in repository
+* text=auto eol=lf
+
+# Binary files - never diff
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar.gz binary
+*.7z binary
+
+# Shell scripts - ensure LF
+*.sh text eol=lf
+
+# TypeScript/JavaScript - normalize line endings
+*.ts text
+*.tsx text
+*.js text
+*.jsx text
+*.mjs text
+*.json text
+*.css text
+*.html text
+*.md text
+
+# Lock files - always binary (exact byte-for-byte comparison)
+pnpm-lock.yaml binary
+package-lock.json binary
+yarn.lock binary
+
+# Generated files - treat as binary
+*.tsbuildinfo binary
+
+# ============================================================================
+# Diff drivers for specific file types
+# ============================================================================
+
+# Treat .env.example as config for diff
+.env.example diff=config

@@ -1,0 +1,19 @@
+# ============================================================================
+# Code Owners - Automatic review assignment
+# ============================================================================
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/code-owners
+
+# All code
+* @voiceflow-aI/main
+
+# API Server
+apps/api-server/ @voiceflow-aI/backend-admins
+
+# Frontend
+apps/voiceflow/ @voiceflow-aI/frontend-admins
+
+# Database/ORM
+libs/db/ @voiceflow-aI/backend-admins
+
+# Shared Types
+libs/api-zod/ @voiceflow-aI/shared-types-admins
