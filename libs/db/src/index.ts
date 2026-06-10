@@ -24,4 +24,29 @@ export function getDb() {
   return _db;
 }
 
+let dbPromise: Promise<ReturnType<typeof drizzle>> | undefined;
+export const dbProxy = {
+  get select() {
+    return getDb().select.bind(getDb());
+  },
+  get insert() {
+    return getDb().insert.bind(getDb());
+  },
+  get update() {
+    return getDb().update.bind(getDb());
+  },
+  get delete() {
+    return getDb().delete.bind(getDb());
+  },
+  get query() {
+    return getDb().query;
+  },
+};
+
+export const db = new Proxy({} as any, {
+  get(_, prop) {
+    return (getDb() as any)[prop];
+  },
+});
+
 export * from "./schema";
