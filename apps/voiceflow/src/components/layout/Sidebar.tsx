@@ -8,8 +8,41 @@ import {
   CreditCard,
   Settings,
   Zap,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useGetBillingUsage } from "@workspace/api-client-react";
+
+function UsageFooter() {
+  const { data: usage, isLoading } = useGetBillingUsage();
+  const minutesUsed = usage?.minutesUsed ?? 0;
+  const minutesIncluded = usage?.minutesIncluded ?? 300;
+  const plan = usage?.plan ?? "Starter";
+  const percent =
+    minutesIncluded > 0 ? Math.round((minutesUsed / minutesIncluded) * 100) : 0;
+
+  return (
+    <div className="rounded-md bg-sidebar-accent px-3 py-2.5">
+      <p className="text-xs text-sidebar-foreground/50 uppercase tracking-wider font-medium mb-0.5">
+        {plan} Plan
+      </p>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-sidebar-foreground/70">
+          {isLoading ? "..." : `${minutesUsed} / ${minutesIncluded} Min.`}
+        </span>
+        <span className="text-xs text-sidebar-primary font-medium">
+          {percent}%
+        </span>
+      </div>
+      <div className="mt-1.5 h-1 bg-sidebar-border rounded-full overflow-hidden">
+        <div
+          className="h-full bg-primary rounded-full"
+          style={{ width: `${Math.min(100, percent)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -18,6 +51,7 @@ const navItems = [
   { href: "/analytics", icon: BarChart3, label: "Analytik" },
   { href: "/integrations", icon: Plug, label: "Integrationen" },
   { href: "/billing", icon: CreditCard, label: "Abrechnung" },
+  { href: "/audit", icon: FileText, label: "Audit-Logs" },
   { href: "/settings", icon: Settings, label: "Einstellungen" },
 ];
 
@@ -32,15 +66,21 @@ export default function Sidebar() {
           <Zap size={14} className="text-white" />
         </div>
         <div>
-          <span className="text-sidebar-foreground font-semibold text-sm tracking-tight">VoiceFlow</span>
-          <span className="text-sidebar-primary font-semibold text-sm tracking-tight"> AI</span>
+          <span className="text-sidebar-foreground font-semibold text-sm tracking-tight">
+            VoiceFlow
+          </span>
+          <span className="text-sidebar-primary font-semibold text-sm tracking-tight">
+            {" "}
+            AI
+          </span>
         </div>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
         {navItems.map(({ href, icon: Icon, label }) => {
-          const active = href === "/" ? location === "/" : location.startsWith(href);
+          const active =
+            href === "/" ? location === "/" : location.startsWith(href);
           return (
             <Link
               key={href}
@@ -49,11 +89,14 @@ export default function Sidebar() {
                 "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer",
                 active
                   ? "bg-sidebar-accent text-sidebar-foreground"
-                  : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                  : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
               )}
               data-testid={`nav-${label.toLowerCase()}`}
             >
-              <Icon size={16} className={active ? "text-primary" : "text-current"} />
+              <Icon
+                size={16}
+                className={active ? "text-primary" : "text-current"}
+              />
               {label}
             </Link>
           );
@@ -62,16 +105,7 @@ export default function Sidebar() {
 
       {/* Footer badge */}
       <div className="px-4 py-4 border-t border-sidebar-border">
-        <div className="rounded-md bg-sidebar-accent px-3 py-2.5">
-          <p className="text-xs text-sidebar-foreground/50 uppercase tracking-wider font-medium mb-0.5">Starter Plan</p>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-sidebar-foreground/70">47 / 300 Min.</span>
-            <span className="text-xs text-sidebar-primary font-medium">16%</span>
-          </div>
-          <div className="mt-1.5 h-1 bg-sidebar-border rounded-full overflow-hidden">
-            <div className="h-full bg-primary rounded-full" style={{ width: "16%" }} />
-          </div>
-        </div>
+        <UsageFooter />
       </div>
     </aside>
   );
