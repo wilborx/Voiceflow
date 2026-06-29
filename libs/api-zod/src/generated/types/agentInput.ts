@@ -5,7 +5,7 @@
  * VoiceFlow AI API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { AgentInputType } from './agentInputType';
+import type { AgentInputType } from "./agentInputType";
 
 export interface AgentInput {
   name: string;
@@ -18,4 +18,6 @@ export interface AgentInput {
   voiceName?: string;
   language?: string;
   systemPrompt: string;
+  consentRequired?: boolean;
+  consentMethod?: string;
 }

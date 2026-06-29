@@ -25,6 +25,8 @@ tags:
     description: Inbound webhook handlers
   - name: agent-config
     description: Agent configuration helpers (voices, prompt templates)
+  - name: audit
+    description: Audit logs for compliance tracking
 
 paths:
   /healthz:
@@ -365,6 +367,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrganizationSettings"
+  /settings/export:
+    get:
+      operationId: exportOrgData
+      tags: [settings]
+      summary: Export organization data (NDJSON)
+      responses:
+        "200":
+          description: NDJSON export stream
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+  /settings/data-request:
+    post:
+      operationId: requestDataDeletion
+      tags: [settings]
+      summary: Request deletion of all organization data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataDeletionInput"
+      responses:
+        "200":
+          description: Deletion status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataDeletionResult"
 
   # ── Integrations ───────────────────────────────────────
   /integrations:
@@ -393,6 +425,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GoogleIntegrationStatus"
+
+  # ── Audit ─────────────────────────────────────────────
+  /audit/logs:
+    get:
+      operationId: listAuditLogs
+      tags: [audit]
+      summary: List audit logs for the organization
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
 
   # ── Agent Config ───────────────────────────────────────
   /agent-config/voices:
@@ -854,3 +908,63 @@ components:
       required:
         - type
         - prompt
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+        orgId:
+          type: string
+        userId:
+          type: ["string", "null"]
+        action:
+          type: string
+          enum:
+            [
+              agent.created,
+              agent.accessed,
+              agent.updated,
+              agent.deleted,
+              call.accessed,
+              call.deleted,
+              consent.revoked,
+              data.export_requested,
+              data.deletion_requested,
+            ]
+        resourceType:
+          type: string
+        resourceId:
+          type: string
+        ipAddress:
+          type: ["string", "null"]
+        userAgent:
+          type: ["string", "null"]
+        metadata:
+          type: object
+        createdAt:
+          type: string
+      required:
+        - id
+        - action
+        - resourceType
+        - resourceId
+        - createdAt
+    DataDeletionInput:
+      type: object
+      properties:
+        confirmation:
+          type: string
+      required: []
+    DataDeletionResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        status:
+          type: string
+        message:
+          type: string
+      required:
+        - success
+        - status
+        - message

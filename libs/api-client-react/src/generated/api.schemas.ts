@@ -9,23 +9,21 @@ export interface HealthStatus {
   status: string;
 }
 
-export type AgentType = typeof AgentType[keyof typeof AgentType];
-
+export type AgentType = (typeof AgentType)[keyof typeof AgentType];
 
 export const AgentType = {
-  booking: 'booking',
-  advisory: 'advisory',
-  hr_screening: 'hr_screening',
-  hr_onboarding: 'hr_onboarding',
+  booking: "booking",
+  advisory: "advisory",
+  hr_screening: "hr_screening",
+  hr_onboarding: "hr_onboarding",
 } as const;
 
-export type AgentStatus = typeof AgentStatus[keyof typeof AgentStatus];
-
+export type AgentStatus = (typeof AgentStatus)[keyof typeof AgentStatus];
 
 export const AgentStatus = {
-  active: 'active',
-  inactive: 'inactive',
-  draft: 'draft',
+  active: "active",
+  inactive: "inactive",
+  draft: "draft",
 } as const;
 
 export interface Agent {
@@ -55,16 +53,18 @@ export interface Agent {
   vapiAssistantId?: string | null;
   createdAt: string;
   updatedAt: string;
+  consentRequired: boolean;
+  consentMethod: string;
 }
 
-export type AgentInputType = typeof AgentInputType[keyof typeof AgentInputType];
-
+export type AgentInputType =
+  (typeof AgentInputType)[keyof typeof AgentInputType];
 
 export const AgentInputType = {
-  booking: 'booking',
-  advisory: 'advisory',
-  hr_screening: 'hr_screening',
-  hr_onboarding: 'hr_onboarding',
+  booking: "booking",
+  advisory: "advisory",
+  hr_screening: "hr_screening",
+  hr_onboarding: "hr_onboarding",
 } as const;
 
 export interface AgentInput {
@@ -78,15 +78,17 @@ export interface AgentInput {
   voiceName?: string;
   language?: string;
   systemPrompt: string;
+  consentRequired?: boolean;
+  consentMethod?: string;
 }
 
-export type AgentUpdateStatus = typeof AgentUpdateStatus[keyof typeof AgentUpdateStatus];
-
+export type AgentUpdateStatus =
+  (typeof AgentUpdateStatus)[keyof typeof AgentUpdateStatus];
 
 export const AgentUpdateStatus = {
-  active: 'active',
-  inactive: 'inactive',
-  draft: 'draft',
+  active: "active",
+  inactive: "inactive",
+  draft: "draft",
 } as const;
 
 export interface AgentUpdate {
@@ -99,38 +101,39 @@ export interface AgentUpdate {
   voiceName?: string;
   language?: string;
   systemPrompt?: string;
+  consentRequired?: boolean;
+  consentMethod?: string;
 }
 
-export type CallDirection = typeof CallDirection[keyof typeof CallDirection];
-
+export type CallDirection = (typeof CallDirection)[keyof typeof CallDirection];
 
 export const CallDirection = {
-  inbound: 'inbound',
-  outbound: 'outbound',
+  inbound: "inbound",
+  outbound: "outbound",
 } as const;
 
-export type CallStatus = typeof CallStatus[keyof typeof CallStatus];
-
+export type CallStatus = (typeof CallStatus)[keyof typeof CallStatus];
 
 export const CallStatus = {
-  queued: 'queued',
-  in_progress: 'in_progress',
-  completed: 'completed',
-  failed: 'failed',
-  no_answer: 'no_answer',
+  queued: "queued",
+  in_progress: "in_progress",
+  completed: "completed",
+  failed: "failed",
+  no_answer: "no_answer",
 } as const;
 
 /**
  * @nullable
  */
-export type CallSentiment = typeof CallSentiment[keyof typeof CallSentiment] | null;
-
+export type CallSentiment =
+  | (typeof CallSentiment)[keyof typeof CallSentiment]
+  | null;
 
 export const CallSentiment = {
-  positive: 'positive',
-  neutral: 'neutral',
-  negative: 'negative',
-  null: 'null',
+  positive: "positive",
+  neutral: "neutral",
+  negative: "negative",
+  null: "null",
 } as const;
 
 export interface Call {
@@ -242,14 +245,14 @@ export interface UpdateSettingsInput {
   elevenLabsKey?: string;
 }
 
-export type IntegrationStatus = typeof IntegrationStatus[keyof typeof IntegrationStatus];
-
+export type IntegrationStatus =
+  (typeof IntegrationStatus)[keyof typeof IntegrationStatus];
 
 export const IntegrationStatus = {
-  connected: 'connected',
-  available: 'available',
-  'coming-soon': 'coming-soon',
-  disconnected: 'disconnected',
+  connected: "connected",
+  available: "available",
+  "coming-soon": "coming-soon",
+  disconnected: "disconnected",
 } as const;
 
 export interface Integration {
@@ -282,19 +285,65 @@ export interface PromptTemplate {
   prompt: string;
 }
 
+export type AuditLogAction =
+  (typeof AuditLogAction)[keyof typeof AuditLogAction];
+
+export const AuditLogAction = {
+  agentcreated: "agent.created",
+  agentaccessed: "agent.accessed",
+  agentupdated: "agent.updated",
+  agentdeleted: "agent.deleted",
+  callaccessed: "call.accessed",
+  calldeleted: "call.deleted",
+  consentrevoked: "consent.revoked",
+  dataexport_requested: "data.export_requested",
+  datadeletion_requested: "data.deletion_requested",
+} as const;
+
+export type AuditLogMetadata = { [key: string]: unknown };
+
+export interface AuditLog {
+  id: string;
+  orgId?: string;
+  /** @nullable */
+  userId?: string | null;
+  action: AuditLogAction;
+  resourceType: string;
+  resourceId: string;
+  /** @nullable */
+  ipAddress?: string | null;
+  /** @nullable */
+  userAgent?: string | null;
+  metadata?: AuditLogMetadata;
+  createdAt: string;
+}
+
+export interface DataDeletionInput {
+  confirmation?: string;
+}
+
+export interface DataDeletionResult {
+  success: boolean;
+  status: string;
+  message: string;
+}
+
 export type ListCallsParams = {
-agentId?: string;
-status?: string;
-limit?: number;
+  agentId?: string;
+  status?: string;
+  limit?: number;
 };
 
 export type GetRecentCallsParams = {
-limit?: number;
+  limit?: number;
+};
+
+export type ListAuditLogsParams = {
+  limit?: number;
 };
 
 export type GetPromptTemplatesParams = {
-type?: string;
+  type?: string;
 };
 
-export type GetPromptTemplates200 = PromptTemplate | {[key: string]: string};
-
+export type GetPromptTemplates200 = PromptTemplate | { [key: string]: string };

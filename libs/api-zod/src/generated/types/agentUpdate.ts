@@ -5,7 +5,7 @@
  * VoiceFlow AI API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { AgentUpdateStatus } from './agentUpdateStatus';
+import type { AgentUpdateStatus } from "./agentUpdateStatus";
 
 export interface AgentUpdate {
   name?: string;
@@ -17,4 +17,6 @@ export interface AgentUpdate {
   voiceName?: string;
   language?: string;
   systemPrompt?: string;
+  consentRequired?: boolean;
+  consentMethod?: string;
 }
