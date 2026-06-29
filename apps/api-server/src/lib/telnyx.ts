@@ -1,17 +1,22 @@
 import { Telnyx } from "telnyx";
+import { logger } from "./logger.js";
 
-const telnyx = process.env.TELNYX_API_KEY
-  ? new Telnyx({ apiKey: process.env.TELNYX_API_KEY })
-  : null;
+const telnyxApiKey = process.env.TELNYX_API_KEY?.trim();
+const telnyx = telnyxApiKey ? new Telnyx({ apiKey: telnyxApiKey }) : null;
 
-export async function purchaseGermanPhoneNumber(): Promise<string | null> {
-  if (!telnyx || !process.env.TELNYX_CONNECTION_ID) {
-    console.warn("Telnyx not configured — skipping phone number purchase");
+type TelnyxClient = NonNullable<typeof telnyx>;
+
+export async function purchaseGermanPhoneNumberWithClient(
+  client: TelnyxClient,
+  connectionId: string | undefined,
+): Promise<string | null> {
+  if (!connectionId) {
+    logger.warn("Telnyx not configured - skipping phone number purchase");
     return null;
   }
 
   try {
-    const { data: available } = await (telnyx.availablePhoneNumbers as any).list({
+    const { data: available } = await client.availablePhoneNumbers.list({
       filter: {
         country_code: "DE",
         features: ["voice"],
@@ -20,47 +25,91 @@ export async function purchaseGermanPhoneNumber(): Promise<string | null> {
     });
 
     if (!available?.length) {
-      console.error("No German phone numbers available");
+      logger.error("No German phone numbers available");
       return null;
     }
 
-    const { data: order } = await (telnyx.numberOrders as any).create({
-      phone_numbers: [{ phone_number: available[0].phone_number }],
-      connection_id: process.env.TELNYX_CONNECTION_ID,
+    const phoneNumber = available[0]?.phone_number;
+    if (!phoneNumber) {
+      logger.error("No German phone numbers available");
+      return null;
+    }
+
+    const { data: order } = await client.numberOrders.create({
+      phone_numbers: [{ phone_number: phoneNumber }],
+      connection_id: connectionId,
     });
 
     return order?.phone_numbers?.[0]?.phone_number ?? null;
   } catch (err) {
-    console.error("Failed to purchase Telnyx number:", err);
+    logger.error({ err }, "Failed to purchase Telnyx number");
     return null;
   }
 }
 
-export async function sendSMS(to: string, message: string): Promise<boolean> {
-  if (!telnyx || !process.env.TELNYX_SENDER_NUMBER) {
-    console.warn("Telnyx not configured — SMS not sent");
+export async function purchaseGermanPhoneNumber(): Promise<string | null> {
+  if (!telnyx || !process.env.TELNYX_CONNECTION_ID) {
+    logger.warn("Telnyx not configured - skipping phone number purchase");
+    return null;
+  }
+
+  return purchaseGermanPhoneNumberWithClient(
+    telnyx,
+    process.env.TELNYX_CONNECTION_ID,
+  );
+}
+
+export async function sendSMSWithClient(
+  client: TelnyxClient,
+  to: string,
+  message: string,
+  senderNumber: string | undefined,
+): Promise<boolean> {
+  if (!senderNumber) {
+    logger.warn("Telnyx not configured - SMS not sent");
     return false;
   }
 
   try {
-    await (telnyx.messages as any).create({
-      from: process.env.TELNYX_SENDER_NUMBER,
+    await client.messages.send({
+      from: senderNumber,
       to,
       text: message,
     });
     return true;
   } catch (err) {
-    console.error("SMS send failed:", err);
+    logger.error({ err, to }, "SMS send failed");
     return false;
   }
+}
+
+export async function sendSMS(to: string, message: string): Promise<boolean> {
+  if (!telnyx || !process.env.TELNYX_SENDER_NUMBER) {
+    logger.warn("Telnyx not configured - SMS not sent");
+    return false;
+  }
+
+  return sendSMSWithClient(
+    telnyx,
+    to,
+    message,
+    process.env.TELNYX_SENDER_NUMBER,
+  );
+}
+
+export async function releasePhoneNumberWithClient(
+  client: TelnyxClient,
+  phoneNumber: string,
+): Promise<void> {
+  await client.phoneNumbers.delete(phoneNumber);
+  logger.info({ phoneNumber }, "Released Telnyx number");
 }
 
 export async function releasePhoneNumber(phoneNumber: string): Promise<void> {
   if (!telnyx) return;
   try {
-    await (telnyx.phoneNumbers as any).delete({ phone_number: phoneNumber });
-    console.log(`Released Telnyx number: ${phoneNumber}`);
+    await releasePhoneNumberWithClient(telnyx, phoneNumber);
   } catch (err) {
-    console.error(`Failed to release Telnyx number ${phoneNumber}:`, err);
+    logger.error({ err, phoneNumber }, "Failed to release Telnyx number");
   }
 }

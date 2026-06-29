@@ -1,56 +1,92 @@
 import { Router } from "express";
 import { db, callsTable, agentsTable } from "@workspace/db";
+import type { Agent, Call } from "@workspace/db";
 import { eq, desc, sql, and, gte } from "drizzle-orm";
+import { decrypt } from "@workspace/crypto";
 import { GetRecentCallsQueryParams } from "@workspace/api-zod";
+import { recordAudit } from "../middlewares/audit";
 
 const router = Router();
+
+type AgentPerformanceStats = {
+  agentId: string | null;
+  totalCalls: number;
+  resolvedCalls: number;
+  avgDuration: number;
+};
+
+function getOrgOwnerId(req: { org?: { ownerId: string } }) {
+  return req.org?.ownerId ?? "";
+}
+
+function decryptStored(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  return decrypt(value) ?? value;
+}
 
 // GET /api/dashboard/stats
 router.get("/stats", async (req, res) => {
   try {
+    const orgOwnerId = getOrgOwnerId(req);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const orgFilter = eq(agentsTable.ownerId, orgOwnerId);
 
     const [todayCalls] = await db
       .select({ count: sql<number>`count(*)` })
       .from(callsTable)
-      .where(gte(callsTable.createdAt, today));
+      .leftJoin(agentsTable, eq(callsTable.agentId, agentsTable.id))
+      .where(and(gte(callsTable.createdAt, today), orgFilter));
 
     const [monthCalls] = await db
       .select({ count: sql<number>`count(*)` })
       .from(callsTable)
-      .where(gte(callsTable.createdAt, monthStart));
+      .leftJoin(agentsTable, eq(callsTable.agentId, agentsTable.id))
+      .where(and(gte(callsTable.createdAt, monthStart), orgFilter));
 
     const [avgDuration] = await db
       .select({ avg: sql<number>`coalesce(avg(duration_seconds), 0)` })
       .from(callsTable)
-      .where(gte(callsTable.createdAt, monthStart));
+      .leftJoin(agentsTable, eq(callsTable.agentId, agentsTable.id))
+      .where(and(gte(callsTable.createdAt, monthStart), orgFilter));
 
     const [resolvedCount] = await db
       .select({ count: sql<number>`count(*)` })
       .from(callsTable)
-      .where(and(gte(callsTable.createdAt, monthStart), eq(callsTable.resolved, true)));
+      .leftJoin(agentsTable, eq(callsTable.agentId, agentsTable.id))
+      .where(
+        and(
+          gte(callsTable.createdAt, monthStart),
+          eq(callsTable.resolved, true),
+          orgFilter,
+        ),
+      );
 
     const [bookingsCount] = await db
       .select({ count: sql<number>`count(*)` })
       .from(callsTable)
-      .where(and(
-        gte(callsTable.createdAt, monthStart),
-        eq(callsTable.resolutionType, "booked"),
-      ));
+      .leftJoin(agentsTable, eq(callsTable.agentId, agentsTable.id))
+      .where(
+        and(
+          gte(callsTable.createdAt, monthStart),
+          eq(callsTable.resolutionType, "booked"),
+          orgFilter,
+        ),
+      );
 
     const [activeAgents] = await db
       .select({ count: sql<number>`count(*)` })
       .from(agentsTable)
-      .where(eq(agentsTable.status, "active"));
+      .where(and(eq(agentsTable.status, "active"), orgFilter));
 
     const monthCallsCount = Number(monthCalls.count);
-    const resolutionRate = monthCallsCount > 0
-      ? Math.round((Number(resolvedCount.count) / monthCallsCount) * 100)
-      : 0;
+    const resolutionRate =
+      monthCallsCount > 0
+        ? Math.round((Number(resolvedCount.count) / monthCallsCount) * 100)
+        : 0;
 
-    res.json({
+    return res.json({
       totalCallsToday: Number(todayCalls.count),
       totalCallsThisMonth: monthCallsCount,
       avgDurationSeconds: Math.round(Number(avgDuration.avg)),
@@ -58,10 +94,10 @@ router.get("/stats", async (req, res) => {
       bookingsThisMonth: Number(bookingsCount.count),
       activeAgents: Number(activeAgents.count),
       minutesUsed: Math.round(monthCallsCount * 3.5),
-      minutesIncluded: 300,
+      minutesIncluded: req.org?.minutesIncluded ?? 300,
     });
-  } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+  } catch {
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -75,29 +111,36 @@ router.get("/recent-calls", async (req, res) => {
       .select({ call: callsTable, agentName: agentsTable.name })
       .from(callsTable)
       .leftJoin(agentsTable, eq(callsTable.agentId, agentsTable.id))
+      .where(and(eq(agentsTable.ownerId, getOrgOwnerId(req))))
       .orderBy(desc(callsTable.createdAt))
       .limit(limit);
 
-    res.json(results.map(({ call, agentName }) => ({
-      id: call.id,
-      agentId: call.agentId,
-      agentName: agentName ?? null,
-      callerNumber: call.callerNumber,
-      direction: call.direction,
-      status: call.status,
-      durationSeconds: call.durationSeconds,
-      resolved: call.resolved,
-      resolutionType: call.resolutionType,
-      escalatedToHuman: call.escalatedToHuman,
-      transcript: call.transcript,
-      summary: call.summary,
-      sentiment: call.sentiment,
-      startedAt: call.startedAt?.toISOString() ?? null,
-      endedAt: call.endedAt?.toISOString() ?? null,
-      createdAt: call.createdAt.toISOString(),
-    })));
+    await recordAudit(req, "call.accessed", "calls", "recent", { limit });
+
+    return res.json(
+      results.map(
+        ({ call, agentName }: { call: Call; agentName: string | null }) => ({
+          id: call.id,
+          agentId: call.agentId,
+          agentName: agentName ?? null,
+          callerNumber: decryptStored(call.callerNumber),
+          direction: call.direction,
+          status: call.status,
+          durationSeconds: call.durationSeconds,
+          resolved: call.resolved,
+          resolutionType: call.resolutionType,
+          escalatedToHuman: call.escalatedToHuman,
+          transcript: decryptStored(call.transcript),
+          summary: decryptStored(call.summary),
+          sentiment: call.sentiment,
+          startedAt: call.startedAt?.toISOString() ?? null,
+          endedAt: call.endedAt?.toISOString() ?? null,
+          createdAt: call.createdAt.toISOString(),
+        }),
+      ),
+    );
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -114,26 +157,39 @@ router.get("/call-volume", async (req, res) => {
         resolved: sql<number>`sum(case when resolved = true then 1 else 0 end)`,
       })
       .from(callsTable)
-      .where(gte(callsTable.createdAt, thirtyDaysAgo))
+      .leftJoin(agentsTable, eq(callsTable.agentId, agentsTable.id))
+      .where(
+        and(
+          gte(callsTable.createdAt, thirtyDaysAgo),
+          eq(agentsTable.ownerId, getOrgOwnerId(req)),
+        ),
+      )
       .groupBy(sql`created_at::date`)
       .orderBy(sql`created_at::date`);
 
-    res.json(rows.map((r) => ({
-      date: r.date,
-      calls: Number(r.calls),
-      resolved: Number(r.resolved),
-    })));
+    return res.json(
+      rows.map((r: { date: string; calls: number; resolved: number }) => ({
+        date: r.date,
+        calls: Number(r.calls),
+        resolved: Number(r.resolved),
+      })),
+    );
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // GET /api/dashboard/agent-performance
 router.get("/agent-performance", async (req, res) => {
   try {
-    const agents = await db.select().from(agentsTable).orderBy(desc(agentsTable.totalCalls));
+    const orgOwnerId = getOrgOwnerId(req);
+    const agents = await db
+      .select()
+      .from(agentsTable)
+      .where(eq(agentsTable.ownerId, orgOwnerId))
+      .orderBy(desc(agentsTable.totalCalls));
 
-    const callStats = await db
+    const callStats = (await db
       .select({
         agentId: callsTable.agentId,
         totalCalls: sql<number>`count(*)`,
@@ -141,25 +197,34 @@ router.get("/agent-performance", async (req, res) => {
         avgDuration: sql<number>`coalesce(avg(duration_seconds), 0)`,
       })
       .from(callsTable)
-      .groupBy(callsTable.agentId);
+      .leftJoin(agentsTable, eq(callsTable.agentId, agentsTable.id))
+      .where(eq(agentsTable.ownerId, orgOwnerId))
+      .groupBy(callsTable.agentId)) as AgentPerformanceStats[];
 
-    const statsMap = new Map(callStats.map((s) => [s.agentId, s]));
+    const statsMap = new Map(
+      callStats.map((s: AgentPerformanceStats) => [s.agentId, s]),
+    );
 
-    res.json(agents.map((a) => {
-      const stats = statsMap.get(a.id);
-      const total = stats ? Number(stats.totalCalls) : Number(a.totalCalls);
-      const resolved = stats ? Number(stats.resolvedCalls) : 0;
-      return {
-        agentId: a.id,
-        agentName: a.name,
-        totalCalls: total,
-        resolutionRate: total > 0 ? Math.round((resolved / total) * 100) : Number(a.resolutionRate),
-        avgDurationSeconds: stats ? Math.round(Number(stats.avgDuration)) : 0,
-        status: a.status,
-      };
-    }));
+    return res.json(
+      agents.map((a: Agent) => {
+        const stats = statsMap.get(a.id);
+        const total = stats ? Number(stats.totalCalls) : Number(a.totalCalls);
+        const resolved = stats ? Number(stats.resolvedCalls) : 0;
+        return {
+          agentId: a.id,
+          agentName: a.name,
+          totalCalls: total,
+          resolutionRate:
+            total > 0
+              ? Math.round((resolved / total) * 100)
+              : Number(a.resolutionRate),
+          avgDurationSeconds: stats ? Math.round(Number(stats.avgDuration)) : 0,
+          status: a.status,
+        };
+      }),
+    );
   } catch {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

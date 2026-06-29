@@ -8,8 +8,10 @@ import webhooksRouter from "./webhooks";
 import toolsRouter from "./tools";
 import integrationsRouter from "./integrations";
 import settingsRouter from "./settings";
+import auditRouter from "./audit";
 import agentConfigRouter from "./agent-config";
-import { requireAuth } from "../middlewares/auth";
+import { clerkSetup, requireAuth } from "../middlewares/auth";
+import { requireOrganization } from "../middlewares/errorHandler";
 
 const router: IRouter = Router();
 
@@ -20,7 +22,9 @@ router.use("/integrations/google/auth", integrationsRouter);
 router.use("/integrations/google/callback", integrationsRouter);
 router.use("/integrations/google/status", integrationsRouter);
 
+router.use(clerkSetup);
 router.use(requireAuth());
+router.use(requireOrganization);
 router.use("/agents", agentsRouter);
 router.use("/calls", callsRouter);
 router.use("/dashboard", dashboardRouter);
@@ -28,6 +32,7 @@ router.use("/billing", billingRouter);
 router.use("/tools", toolsRouter);
 router.use("/integrations", integrationsRouter);
 router.use("/settings", settingsRouter);
+router.use("/audit", auditRouter);
 router.use("/agent-config", agentConfigRouter);
 
 export default router;
