@@ -1,0 +1,40 @@
+VoiceFlow-AI – Datenschutzerklärung
+
+________________________________________
+
+1. Verantwortlicher
+VoiceFlow-AI GmbH
+[Straße/Kontakt]
+
+2. Verarbeitete Daten
+- Anrufdaten: Dauer, Zeitpunkt, Richtung, Status
+- Gesprächsinhalte: Transkripte, Zusammenfassungen (nur nach Einwilligung)
+- Kontaktdaten: Telefonnummer des Anrufers (nur nach Einwilligung)
+- Organisationsdaten: Name, E-Mail, Nutzungsstatistiken
+
+3. Rechtsgrundlagen
+- Einwilligung (Art. 6 Abs. 1 lit. a DSGVO): Aufzeichnung und Analyse von Gesprächen
+- Vertrag (Art. 6 Abs. 1 lit. b DSGVO): Bereitstellung der Plattform
+- Berechtigtes Interesse (Art. 6 Abs. 1 lit. f DSGVO): Betrugsprävention
+
+4. Speicherdauer
+- Anrufdaten: 365 Tage (konfigurierbar)
+- Organisationsdaten: Bis zur Löschung des Kontos
+- Gesprächsaufzeichnungen: 30 Tage, dann automatisch gelöscht
+
+5. Ihre Rechte (DSGVO)
+- Auskunft (Art. 15)
+- Richtigstellung (Art. 16)
+- Löschung (Art. 17)
+- Einschränkung (Art. 18)
+- Datenübertragbarkeit (Art. 20)
+- Widerspruch (Art. 21)
+- Beschwerde bei Aufsichtsbehörde
+
+6. Kontakt
+E-Mail: privacy@voiceflow-ai.de
+
+________________________________________
+
+Version: 1.0 | Stand: Juni 2026
+Hinweis: Dies ist eine Vorlage. Die finale Version muss von einem Rechtsanwalt geprüft werden.

@@ -1,0 +1,44 @@
+VoiceFlow-AI – Auftragsverarbeitungsvertrag (AVV) Vorlage
+
+________________________________________
+
+Zwischen
+
+VoiceFlow-AI GmbH (Verantwortlicher)
+und
+
+[Kundenname / Organisation] (Auftraggeber)
+
+1. Gegenstand der Auftragsverarbeitung
+   Der Auftragnehmer verarbeitet personenbezogene Daten im Auftrag des Auftraggebers ausschließlich für den Betrieb der KI-Telefonie-Plattform VoiceFlow-AI.
+
+2. Art und Zweck der Verarbeitung
+   - Aufzeichnung von Telefongesprächen (nur nach Double-Opt-In)
+   - Speicherung von Transkripten, Zusammenfassungen und Anrufmetadaten
+   - Terminbuchung via Google Kalender Integration
+
+3. Technische und organisatorische Maßnahmen (TOM)
+   - AES-256-GCM Verschlüsselung at-rest
+   - HTTPS/TLS 1.3 in-transit
+   - Automatische Löschung nach konfigurierter Aufbewahrungsfrist (Standard: 365 Tage)
+   - Zugriffskontrolle via Clerk Auth
+   - Audit-Logging für alle sensiblen Operationen
+
+4. Unterauftragsverarbeiter
+   - Vapi.ai (Telefonie/Spracherkennung)
+   - Telnyx (Telefonnummern-Management)
+   - Stripe (Zahlungsabwicklung)
+   - Google Cloud (Kalender-Sync)
+
+5. Rechte und Pflichten des Auftraggebers
+   - Art. 17 DSGVO Löschrecht jederzeit möglich
+   - Art. 20 DSGVO Datenexport jederzeit möglich
+   - Einwilligungswiderruf mit sofortiger Wirkung
+
+6. Geltungsdauer
+   Dieser Vertrag gilt für die Dauer der Nutzung der VoiceFlow-AI Plattform.
+
+________________________________________
+
+Version: 1.0 | Stand: Juni 2026
+Hinweis: Dies ist eine Vorlage. Die finale Version muss von einem Rechtsanwalt geprüft werden.
