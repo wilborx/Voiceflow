@@ -14,7 +14,8 @@
     "types": ["node", "vite/client"],
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "exactOptionalPropertyTypes": false
   },
   "references": [
     {

@@ -8,6 +8,7 @@ node_modules
 # Build artifacts / compiled output
 # ============================================================================
 dist
+.tmp/
 tmp
 out-tsc
 *.tsbuildinfo
@@ -15,6 +16,8 @@ build/
 .next/
 out/
 *.tsbuild
+*.production.tsbuildinfo
+*.log
 
 # ============================================================================
 # Environment variables (DSGVO: niemals committen — Secrets/API-Keys)
