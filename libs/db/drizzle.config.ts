@@ -6,9 +6,17 @@ if (!process.env.DATABASE_URL) {
 }
 
 export default defineConfig({
-  schema: path.join(__dirname, "./src/schema/index.ts"),
+  schema: [
+    "./src/schema/agents.ts",
+    "./src/schema/audit-logs.ts",
+    "./src/schema/calls.ts",
+    "./src/schema/organizations.ts",
+    "./src/schema/webhook-events.ts",
+  ],
   dialect: "postgresql",
   dbCredentials: {
     url: process.env.DATABASE_URL,
   },
+  out: path.join(__dirname, "./src/migrations"),
+  migrationLimit: 100,
 });

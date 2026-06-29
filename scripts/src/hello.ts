@@ -1,1 +1,3 @@
-console.log("Hello from @workspace/scripts");
+export function hello() {
+  return "Hello from @workspace/scripts";
+}

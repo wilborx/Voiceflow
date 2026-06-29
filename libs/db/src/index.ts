@@ -2,51 +2,36 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema";
 
-let _db: ReturnType<typeof drizzle> | undefined;
+let dbInstance: ReturnType<typeof drizzle> | undefined;
 
 export function createDb() {
-  if (!process.env.DATABASE_URL) {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
     throw new Error(
       "DATABASE_URL must be set. Did you forget to provision a database?",
     );
   }
 
-  return drizzle(new Pool({ connectionString: process.env.DATABASE_URL }), {
-    schema,
-  });
+  return drizzle(new Pool({ connectionString }), { schema });
 }
 
 export function getDb() {
-  if (!_db) {
-    _db = createDb();
+  if (!dbInstance) {
+    dbInstance = createDb();
   }
-
-  return _db;
+  return dbInstance;
 }
 
-let dbPromise: Promise<ReturnType<typeof drizzle>> | undefined;
-export const dbProxy = {
-  get select() {
-    return getDb().select.bind(getDb());
-  },
-  get insert() {
-    return getDb().insert.bind(getDb());
-  },
-  get update() {
-    return getDb().update.bind(getDb());
-  },
-  get delete() {
-    return getDb().delete.bind(getDb());
-  },
-  get query() {
-    return getDb().query;
-  },
-};
-
-export const db = new Proxy({} as any, {
+/**
+ * DB Proxy allows lazy initialization without explicit getDb() calls.
+ * This pattern enables `import { db } from "@workspace/db"` with runtime DB startup.
+ * Note: The `any` cast is required for Drizzle ORM's Proxy-based API compatibility.
+ * Use getDb() directly for explicit typing.
+ */
+export const db = new Proxy({} as ReturnType<typeof drizzle>, {
   get(_, prop) {
-    return (getDb() as any)[prop];
+    return getDb()[prop as keyof ReturnType<typeof drizzle>];
   },
-});
+}) as ReturnType<typeof drizzle>;
 
 export * from "./schema";

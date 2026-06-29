@@ -14,11 +14,18 @@ export const organizationsTable = pgTable("organizations", {
   minutesIncluded: integer("minutes_included").notNull().default(300),
   minutesUsed: integer("minutes_used").notNull().default(0),
   billingCycleStart: timestamp("billing_cycle_start", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  dataRetentionDays: integer("data_retention_days").notNull().default(365),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
-export const insertOrganizationSchema = createInsertSchema(organizationsTable).omit({
+export const insertOrganizationSchema = createInsertSchema(
+  organizationsTable,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,

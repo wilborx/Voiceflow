@@ -1,28 +1,55 @@
 {
   "name": "workspace",
   "version": "0.0.0",
+  "type": "module",
   "license": "MIT",
+  "private": true,
   "scripts": {
     "preinstall": "node -e \"const a=process.env.npm_config_user_agent||''; if (!a.startsWith('pnpm/')) { console.error('Use pnpm instead'); process.exit(1); }\"",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./apps/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./apps/**\" --filter \"./scripts\" --if-present run typecheck",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "test:unit": "vitest run --exclude '**/e2e/**'",
+    "test:integration": "vitest run --include '**/integration/**'",
+    "test:e2e": "playwright test",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui"
   },
-  "private": true,
   "devDependencies": {
+    "@playwright/test": "^1.47.0",
     "@rollup/rollup-win32-x64-msvc": "^4.61.1",
     "@tailwindcss/oxide": "^4.3.0",
+    "@testing-library/jest-dom": "^6.4.0",
+    "@testing-library/react": "^15.0.0",
+    "@testing-library/user-event": "^14.5.0",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
+    "@vitejs/plugin-react": "^4.4.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "eslint": "^10.5.0",
+    "eslint-plugin-tsdoc": "^0.5.2",
+    "happy-dom": "^15.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
+    "msw": "^2.4.0",
     "prettier": "^3.8.3",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "vitest": "^2.0.0",
+    "zod": "^3.25.76"
   },
   "lint-staged": {
     "*": [
       "prettier --write --ignore-unknown"
     ],
     "*.{ts,tsx}": [
-      "bash -c 'tsc --noEmit --skipLibCheck'"
+      "bash -c 'tsc --noEmit --skipLibCheck'",
+      "bash -c 'echo \"Rejecting console usage\";rg --no-heading -l -g \"*.ts\" -g \"*.tsx\" \"console\\\\.\" || true'"
+    ],
+    "*.{test,spec}.{ts,tsx}": [
+      "vitest related --run"
     ]
   }
 }
