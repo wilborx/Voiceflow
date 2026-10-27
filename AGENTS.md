@@ -10,6 +10,7 @@ apps/
   api-server/           – Express API (Auth, Voice-Webhooks, Stripe, Drizzle)
   voiceflow/            – Haupt-Frontend Admin/Dashboard
   mockup-sandbox/       – Mockup-/Test-Sandbox
+  boxtrainer/           – Buchungs-Funnel Boxtrainer (Next.js + Supabase, eigenständig, siehe README)
 libs/
   db/                   – Datenbank-Modelle (Drizzle schema)
   api-zod/              – Zod-Schemas + Validierung
